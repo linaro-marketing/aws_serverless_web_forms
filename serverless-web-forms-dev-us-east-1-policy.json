@@ -44,6 +44,7 @@
         "s3:DeleteBucket",
         "s3:ListBucket",
         "s3:ListBucketVersions",
+        "s3:PutBucketPolicy",
         "s3:PutAccelerateConfiguration",
         "s3:GetEncryptionConfiguration",
         "s3:PutEncryptionConfiguration"
