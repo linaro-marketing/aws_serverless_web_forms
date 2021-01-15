@@ -1,0 +1,28 @@
+service: serverless-web-forms
+frameworkVersion: "2"
+# Our serverless infra provider section
+provider:
+  name: aws
+  stage: dev
+  runtime: nodejs12.x
+  region: us-east-1
+# Serverless functions
+functions:
+  formSubmission:
+    handler: api/form.submit
+    memorySize: 128
+    description: Save the form entry details to DynamoDB and send the verification email.
+    events:
+      - http:
+          path: formSubmit
+          method: post
+  formVerification:
+    handler: api/form.verify
+    memorySize: 128
+    description: Verify the GET token header from the email verification link. Create the new Ticket. Delete the form entry from DynamoDB.
+    events:
+      - http:
+          path: formVerfiy
+          method: get
+plugins:
+  - serverless-offline
