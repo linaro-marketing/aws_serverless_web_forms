@@ -6,6 +6,27 @@ provider:
   stage: dev
   runtime: nodejs12.x
   region: us-east-1
+  environment:
+    ENTRIES_TABLE: ${self:service}-${opt:stage, self:provider.stage}
+  apiGateway:
+    apiKeys:
+      - name: website
+    usagePlan:
+      quota:
+        limit: 300
+        offset: 2
+        period: MONTH
+      throttle:
+        burstLimit: 2
+        rateLimit: 1
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+      Resource: "*"
 # Serverless functions
 functions:
   formSubmission:
@@ -16,6 +37,7 @@ functions:
       - http:
           path: formSubmit
           method: post
+          private: true
   formVerification:
     handler: api/form.verify
     memorySize: 128
@@ -24,5 +46,24 @@ functions:
       - http:
           path: formVerfiy
           method: get
+          private: true
+resources:
+  Resources:
+    FormEntriesDynamoDbTable:
+      Type: "AWS::DynamoDB::Table"
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: "id"
+            AttributeType: "S"
+        KeySchema:
+          - AttributeName: "id"
+            KeyType: "HASH"
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        StreamSpecification:
+          StreamViewType: "NEW_AND_OLD_IMAGES"
+        TableName: ${self:provider.environment.ENTRIES_TABLE}
 plugins:
   - serverless-offline
