@@ -1,0 +1,14 @@
+{
+  "name": "serverless_web_forms",
+  "version": "1.0.0",
+  "description": "A Serverless Service for the handling of static website forms. Upon submission of the form, a verification email is sent with a link that needs to be clicked before the form is submitted",
+  "main": "index.js",
+  "author": "Kyle Kirkby",
+  "license": "MIT",
+  "dependencies": {
+    "body-parser": "^1.19.0",
+    "express": "^4.17.1",
+    "serverless-http": "^2.6.0",
+    "serverless-offline": "^6.8.0"
+  }
+}
