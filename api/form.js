@@ -12,16 +12,16 @@ module.exports.submit = (event, context, callback) => {
   const name = requestBody.name;
   const email = requestBody.email;
   // Some type validation
+  // Also check that the requestBody has a length > than 0
   if (
-    typeof fullname !== "string" ||
-    typeof email !== "string" ||
-    typeof experience !== "number"
+    typeof name !== "string" ||
+    (typeof email !== "string" && requestBody.length > 0)
   ) {
     console.error("Validation Failed");
     callback(new Error("Couldn't submit form because of validation errors."));
     return;
   }
-  submitFormEntry(formEntryStruct(name, email))
+  submitFormEntry(formEntryStruct(name, email, requestBody))
     .then((res) => {
       callback(null, {
         statusCode: 200,
@@ -53,14 +53,14 @@ const submitFormEntry = (formEntry) => {
     .promise()
     .then((res) => formEntry);
 };
-const formEntryStruct = (name, email) => {
+const formEntryStruct = (name, email, requestBody) => {
   const timestamp = new Date().getTime();
   return {
     id: uuid.v1(),
-    name: fullname,
+    name: name,
     email: email,
+    payload: JSON.stringify(requestBody),
     submittedAt: timestamp,
-    updatedAt: timestamp,
   };
 };
 module.exports.verify = (event, context, callback) => {
