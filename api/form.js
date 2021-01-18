@@ -4,8 +4,37 @@ const uuid = require("uuid");
 const AWS = require("aws-sdk");
 AWS.config.setPromisesDependency(require("bluebird"));
 const dynamoDb = new AWS.DynamoDB.DocumentClient();
+const ses = new AWS.SES({
+  region: "us-east-1", // Set the region in which SES is configured
+});
 
+const sendVerificationEmail = (inputs, templateName, sendTo, formId) => {
+  let confirmationEmailLink = `https://pvwhresjz0.execute-api.us-east-1.amazonaws.com/dev/formVerfiy?token=${formId}`;
+  let templateData = {
+    confirmation_link: confirmationEmailLink,
+    name: inputs["name"],
+  };
+  // Template Params
+  const params = {
+    Template: templateName,
+    Destination: {
+      ToAddresses: [sendTo],
+    },
+    Source: "it-support@linaro.org", // use the SES domain or email verified in your account
+    TemplateData: JSON.stringify(templateData || {}),
+  };
+  // Send the email
+  ses.sendTemplatedEmail(params, (err, data) => {
+    if (err) {
+      console.log(err);
+      return false;
+    } else {
+      return true;
+    }
+  });
+};
 module.exports.submit = (event, context, callback) => {
+  console.log(event);
   // Get the POST request body
   const requestBody = JSON.parse(event.body);
   // Test Attributes
@@ -23,6 +52,8 @@ module.exports.submit = (event, context, callback) => {
   }
   submitFormEntry(formEntryStruct(name, email, requestBody))
     .then((res) => {
+      // Send the template email
+      sendVerificationEmail(requestBody, "confirmation_dev", email, res.id);
       callback(null, {
         statusCode: 200,
         body: JSON.stringify({
