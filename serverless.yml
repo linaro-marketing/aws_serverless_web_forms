@@ -69,11 +69,11 @@ resources:
           StreamViewType: "NEW_AND_OLD_IMAGES"
         TableName: ${self:provider.environment.ENTRIES_TABLE}
 package:
-  excludeDevDependencies: true
   exclude:
-    - ./**.json
-    - ./**.js
-    - /**.lock
+    - ./form_data.json
+    - ./package.json
+    - ./setup_form_data.js
+    - ./yarn.lock
     - ./config/**
     - ./templates/**
     - ./html_examples/**
