@@ -33,7 +33,7 @@ provider:
 # Serverless functions
 functions:
   formSubmission:
-    handler: api/form.submit
+    handler: index.submit
     memorySize: 128
     description: Save the form entry details to DynamoDB and send the verification email.
     events:
@@ -42,7 +42,7 @@ functions:
           method: post
           private: true
   formVerification:
-    handler: api/form.verify
+    handler: index.verify
     memorySize: 128
     description: Verify the GET token header from the email verification link. Create the new Ticket. Delete the form entry from DynamoDB.
     events:
@@ -69,8 +69,17 @@ resources:
           StreamViewType: "NEW_AND_OLD_IMAGES"
         TableName: ${self:provider.environment.ENTRIES_TABLE}
 package:
+  excludeDevDependencies: true
+  exclude:
+    - ./**.json
+    - ./**.js
+    - /**.lock
+    - ./config/**
+    - ./templates/**
+    - ./html_examples/**
   include:
-    - api/requests.json
+    - ./index.js
+    - ./form_data.json
 plugins:
   - serverless-offline
   - serverless-plugin-scripts
@@ -78,9 +87,9 @@ plugins:
 custom:
   scripts:
     commands:
-      collectFormData: node setup_form_data.js --path formConfig.json --outPath api/form_data.json
+      collectFormData: node setup_form_data.js --path config/formConfig.json --outPath form_data.json
   sesTemplates:
     addStage: true # Specifies whether to add stage to template name (default false)
-    configFile: "./api/ses-template.js" # Config file path (default './ses-email-templates/index.js')
+    configFile: "./ses-template.js" # Config file path (default './ses-email-templates/index.js')
     disableAutoDeploy: false
     region: "us-east-1" # Specifies AWS region for SES templates (not required)
