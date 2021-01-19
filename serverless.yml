@@ -26,6 +26,7 @@ provider:
         - dynamodb:Scan
         - dynamodb:GetItem
         - dynamodb:PutItem
+        - ses:SendTemplatedEmail
       Resource: "*"
 # Serverless functions
 functions:
@@ -46,7 +47,7 @@ functions:
       - http:
           path: formVerfiy
           method: get
-          private: true
+          private: false
 resources:
   Resources:
     FormEntriesDynamoDbTable:
@@ -65,5 +66,19 @@ resources:
         StreamSpecification:
           StreamViewType: "NEW_AND_OLD_IMAGES"
         TableName: ${self:provider.environment.ENTRIES_TABLE}
+package:
+  include:
+    - api/requests.json
 plugins:
   - serverless-offline
+  - serverless-plugin-scripts
+  - "@haftahave/serverless-ses-template"
+custom:
+  scripts:
+    commands:
+      collectFormData: node setup_form_data.js --path requests.json --outPath api/requests.json
+  sesTemplates:
+    addStage: true # Specifies whether to add stage to template name (default false)
+    configFile: "./api/ses-template.js" # Config file path (default './ses-email-templates/index.js')
+    disableAutoDeploy: false
+    region: "us-east-1" # Specifies AWS region for SES templates (not required)
