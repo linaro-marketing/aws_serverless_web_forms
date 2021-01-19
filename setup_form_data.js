@@ -110,12 +110,17 @@ const createExampleFormHTML = (form) => {
   });
   newForm += `<input type="submit" value="Submit">\n`;
   newForm += `</form>`;
-  fs.writeFile(`example_form-${form.form_id}.html`, newForm, "utf8", (err) => {
-    if (err) throw err;
-    console.log(
-      `example_form-${form.form_id}.html example form has been written!`
-    );
-  });
+  fs.writeFile(
+    `html_examples/example_form-${form.form_id}.html`,
+    newForm,
+    "utf8",
+    (err) => {
+      if (err) throw err;
+      console.log(
+        `example_form-${form.form_id}.html example form has been written!`
+      );
+    }
+  );
   return true;
 };
 const main = async (result) => {
