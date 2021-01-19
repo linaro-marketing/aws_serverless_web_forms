@@ -88,6 +88,11 @@ const getData = (formEntry) => {
     .then((res) => {
       newData.fields = res;
       return newData;
+    })
+    .catch((err) => {
+      console.log("Please make sure your login credentials are correct!");
+      console.log(err);
+      return false;
     });
 };
 // Helper function to create an example HTML form for use in your static website
