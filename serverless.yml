@@ -6,9 +6,11 @@ provider:
   stage: dev
   runtime: nodejs12.x
   region: us-east-1
+  lambdaHashingVersion: 20201221
   environment:
     ENTRIES_TABLE: ${self:service}-${opt:stage, self:provider.stage}
   apiGateway:
+    shouldStartNameWithService: true
     apiKeys:
       - name: website
     usagePlan:
@@ -76,7 +78,7 @@ plugins:
 custom:
   scripts:
     commands:
-      collectFormData: node setup_form_data.js --path requests.json --outPath api/requests.json
+      collectFormData: node setup_form_data.js --path formConfig.json --outPath api/form_data.json
   sesTemplates:
     addStage: true # Specifies whether to add stage to template name (default false)
     configFile: "./api/ses-template.js" # Config file path (default './ses-email-templates/index.js')
