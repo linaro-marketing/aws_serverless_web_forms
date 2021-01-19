@@ -35,7 +35,7 @@ function onErr(err) {
   console.log(err);
   return 1;
 }
-const getData = (formEntry) => {
+const getData = (formEntry, index) => {
   var newData = {};
   return fetch(
     `https://${service_desk_domain}/rest/servicedeskapi/servicedesk`,
@@ -70,7 +70,7 @@ const getData = (formEntry) => {
         }
       }
       newData = {
-        form_id: formEntry.form_id,
+        form_id: index + 1,
         projectName: formEntry.projectName,
         requestTypeName: formEntry.requestType,
         projectId: projectId,
@@ -136,13 +136,13 @@ const main = async (result) => {
       const obj = JSON.parse(data);
       var promiseArray = [];
       // Loop over form configs
-      for (const formEntry of obj) {
+      obj.forEach((formEntry, index) => {
         console.log(
-          `Collecting data for form with ID of ${formEntry.form_id}...`
+          `Collecting data for ${formEntry.projectName} - ${formEntry.requestType}...`
         );
-        const formEntryDataPromise = getData(formEntry);
+        const formEntryDataPromise = getData(formEntry, index);
         promiseArray.push(formEntryDataPromise);
-      }
+      });
       var collectedData = await Promise.all(promiseArray);
       console.log(`Data has been collected!`);
       console.log(`Writing ${argv.outPath} file...`);
