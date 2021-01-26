@@ -2,5 +2,9 @@
     {
         "projectName": "Linaro Contact",
         "requestType": "Developer Services Request"
+    },
+    {
+        "projectName": "Linaro Contact",
+        "requestType": "Technology Interest Request"
     }
 ]
