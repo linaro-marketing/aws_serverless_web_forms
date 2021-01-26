@@ -390,6 +390,10 @@ module.exports.submit = (event, context, callback) => {
       );
       callback(null, {
         statusCode: 200,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Credentials": true,
+        },
         body: JSON.stringify({
           message: `Sucessfully submitted form with email ${email}`,
           formId: res.id,
@@ -400,6 +404,10 @@ module.exports.submit = (event, context, callback) => {
       console.log(err);
       callback(null, {
         statusCode: 500,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Credentials": true,
+        },
         body: JSON.stringify({
           message: `Unable to submit form with email ${email}`,
         }),
