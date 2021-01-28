@@ -88,8 +88,11 @@ const sendVerificationEmail = (inputs, templateName, sendTo, formId, event) => {
     }
   });
 };
-
-// Submit Entry to Dynamo DB table.
+/**
+ * Submit Entry to Dynamo DB table.
+ * @param {Object} formEntry - formEntryStruct() object.
+ * @returns {Promise} - Returns a dynamoDb promise.
+ */
 const submitFormEntry = (formEntry) => {
   console.log("Adding form formEntry to dynamo db...");
   const formEntryInfo = {
@@ -101,11 +104,16 @@ const submitFormEntry = (formEntry) => {
     .promise()
     .then((res) => formEntry);
 };
-const formEntryStruct = (name, email, requestBody) => {
+/**
+ * Creates an Object with neccessary dynamoDb attributes.
+ * @param {string} email - The email address of the form submitter
+ * @param {Object} requestBody - The validated requestBody object
+ * @returns {Object} - Returns an object ready to be added to dynamoDb
+ */
+const formEntryStruct = (email, requestBody) => {
   const timestamp = new Date().getTime();
   return {
     id: uuid.v1(),
-    name: name,
     email: email,
     payload: JSON.stringify(requestBody),
     submittedAt: timestamp,
@@ -259,12 +267,14 @@ const addUserToServiceDeskProject = (user, secret) => {
 const fetchFormData = (form_id) => {
   let rawFormData = fs.readFileSync("form_data.json");
   let tempformData = JSON.parse(rawFormData);
+  var foundForm = false;
   tempformData.forEach((form, index) => {
     if (form.form_id.toString() === form_id) {
       formData = form;
+      foundForm = true;
     }
   });
-  return formData;
+  return foundForm ? formData : false;
 };
 /**
  * Creates the Service Desk Request
@@ -322,6 +332,79 @@ const submitTicket = (data) => {
   console.log(data);
 };
 
+/**
+ * Take the form data and attempt to collect required form verification
+ * email inputs. E.g a name.
+ * @param {Object} formData - The formSubmission data object.
+ * @returns {Object} - Returns an object containing neccessary inputs for
+ *  verification email
+ */
+const getVerificationEmailTemplateInputs = (formData) => {
+  // Get the submissions form_id.
+  let form_id = formData["form_id"];
+  // Let's fetch the form data from form_data.json
+  let validFormData = fetchFormData(form_id);
+  var firstName = "";
+  var familyName = "";
+  var fullName = "";
+  for (let i = 0; i < validFormData.fields.requestTypeFields.length; i++) {
+    // Field name contains "Name"
+    if (
+      formData.hasOwnProperty(
+        validFormData.fields.requestTypeFields[i].name.indexOf("Name") > -1
+      )
+    ) {
+      var fieldName = validFormData.fields.requestTypeFields[i].name.trim();
+      if (fieldName === "Family Name") {
+        familyName = fieldName;
+      } else if (fieldName === "First Name") {
+        firstName = fieldName;
+      }
+    }
+  }
+  if (firstName !== "" && familyName !== "") {
+    fullName = `${firstName} ${familyName}`;
+  }
+  return { name: firstName, familyName: familyName, fullName: fullName };
+};
+//
+/**
+ * Validate the form agains the local form_data.json file.
+ * @param {Object} formData - The formSubmission data object.
+ * @returns {Boolean} - If the form data is valid return true else
+ * return false.
+ */
+const validateForm = (formData) => {
+  // Get the submissions form_id.
+  let form_id = formData["form_id"];
+  // Let's fetch the form data from form_data.json
+  let validFormData = fetchFormData(form_id);
+  // Check that the form data is returned.
+  if (!validFormData) {
+    console.log("Couldn't fetch form_data for the form_id provided.");
+    return false;
+  } else {
+    // Form id exists - let's check the other values
+    const validRequiredRequestFields = validFormData.fields.requestTypeFields.filter(
+      (entry) => {
+        return entry.required === true;
+      }
+    );
+    // Check the form submission contains the required fields.
+    for (let i = 0; i < validRequiredRequestFields.length; i++) {
+      if (!formData.hasOwnProperty(validRequiredRequestFields[i].fieldId)) {
+        console.log("Missing a required field.");
+        return false;
+      }
+    }
+    // Check the form submission has an email property.
+    if (!formData.hasOwnProperty("email")) {
+      console.log("Missing the email field.");
+      return false;
+    }
+  }
+  return true;
+};
 module.exports.verify = (event, context, callback) => {
   console.log(event);
   verifySubmission(event)
@@ -365,52 +448,57 @@ module.exports.submit = (event, context, callback) => {
   console.log(event);
   // Get the POST request body
   const requestBody = JSON.parse(event.body);
-  // Test Attributes
-  const name = requestBody.name;
-  const email = requestBody.email;
   // Some type validation
+  var formValid = validateForm(requestBody);
   // Also check that the requestBody has a length > than 0
-  if (
-    typeof name !== "string" ||
-    (typeof email !== "string" && requestBody.length > 0)
-  ) {
+  if (!formValid) {
     console.error("Validation Failed");
-    callback(new Error("Couldn't submit form because of validation errors."));
-    return;
-  }
-  submitFormEntry(formEntryStruct(name, email, requestBody))
-    .then((res) => {
-      // Send the template email
-      sendVerificationEmail(
-        requestBody,
-        "confirmation_dev",
-        email,
-        res.id,
-        event
-      );
-      callback(null, {
-        statusCode: 200,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Credentials": true,
-        },
-        body: JSON.stringify({
-          message: `Sucessfully submitted form with email ${email}`,
-          formId: res.id,
-        }),
-      });
-    })
-    .catch((err) => {
-      console.log(err);
-      callback(null, {
-        statusCode: 500,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Credentials": true,
-        },
-        body: JSON.stringify({
-          message: `Unable to submit form with email ${email}`,
-        }),
-      });
+    callback(null, {
+      statusCode: 200,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Credentials": true,
+      },
+      body: JSON.stringify({
+        message: "Couldn't submit form because of validation errors.",
+      }),
     });
+  } else {
+    var inputs = getVerificationEmailTemplateInputs(requestBody);
+    submitFormEntry(formEntryStruct(requestBody["email"], requestBody))
+      .then((res) => {
+        // Send the template email
+        sendVerificationEmail(
+          { name: inputs["fullName"] },
+          "confirmation_dev",
+          requestBody["email"],
+          res.id,
+          event
+        );
+        callback(null, {
+          statusCode: 200,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Credentials": true,
+          },
+          body: JSON.stringify({
+            message: `Sucessfully submitted form with email ${requestBody["email"]}`,
+            formId: res.id,
+          }),
+        });
+      })
+      .catch((err) => {
+        console.log(err);
+        callback(null, {
+          statusCode: 500,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Credentials": true,
+          },
+          body: JSON.stringify({
+            message: `Unable to submit form with email ${requestBody["email"]}`,
+          }),
+        });
+      });
+  }
 };
