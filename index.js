@@ -110,11 +110,12 @@ const submitFormEntry = (formEntry) => {
  * @param {Object} requestBody - The validated requestBody object
  * @returns {Object} - Returns an object ready to be added to dynamoDb
  */
-const formEntryStruct = (email, requestBody) => {
+const formEntryStruct = (origin, email, requestBody) => {
   const timestamp = new Date().getTime();
   return {
     id: uuid.v1(),
     email: email,
+    website: origin,
     payload: JSON.stringify(requestBody),
     submittedAt: timestamp,
   };
@@ -414,15 +415,17 @@ module.exports.verify = (event, context, callback) => {
       // Check if the result contains data.
       // If it does, the id has been found
       if (res.hasOwnProperty("Item")) {
+        // Parse the response
+        const formDataFromDB = JSON.parse(res.Item.payload);
         // Submit the ticket with data from dynamoDB
-        submitTicket(res);
+        submitTicket(formDataFromDB);
+        // Format a redirection url
+        var redirection_url = `${formDataFromDB.website}/thank-you/?email=${formDataFromDB.email}`;
         const response = {
-          statusCode: 200,
-          body: JSON.stringify({
-            message:
-              "Email link has been verified and your ticket has been submitted.",
-            input: event,
-          }),
+          statusCode: 301,
+          headers: {
+            Location: redirection_url,
+          },
         };
         callback(null, response);
       } else {
@@ -465,7 +468,9 @@ module.exports.submit = (event, context, callback) => {
     });
   } else {
     var inputs = getVerificationEmailTemplateInputs(requestBody);
-    submitFormEntry(formEntryStruct(requestBody["email"], requestBody))
+    submitFormEntry(
+      formEntryStruct(event.headers.origin, requestBody["email"], requestBody)
+    )
       .then((res) => {
         // Send the template email
         sendVerificationEmail(
