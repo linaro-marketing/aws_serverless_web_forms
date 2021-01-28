@@ -37,12 +37,24 @@ functions:
   formSubmission:
     handler: index.submit
     memorySize: 128
+    environment:
+      VERIFICATION_FROM_EMAIL_ADDR: ${env:VERIFICATION_FROM_EMAIL_ADDR}
     description: Save the form entry details to DynamoDB and send the verification email.
     events:
       - http:
           path: formSubmit
           method: post
           private: true
+          cors:
+            origin: "*"
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+              - X-Amz-User-Agent
+            allowCredentials: true
   formVerification:
     handler: index.verify
     memorySize: 128
