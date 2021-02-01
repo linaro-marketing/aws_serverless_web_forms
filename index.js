@@ -16,7 +16,6 @@ const vault = nv({
   apiVersion: "v1",
   endpoint: `https://${process.env.VAULT_DOMAIN}:${process.env.VAULT_PORT}`,
 });
-var formData = {};
 vault.generateFunction("awsIamLogin", {
   method: "POST",
   path: "/auth/aws/login",
@@ -231,7 +230,7 @@ const getServiceDeskUserAccount = (form_submission_data, secret) => {
  * @param {string} secret - The Service Desk account password. Username is provided via process.env.SERVICE_DESK_USERNAME
  * @returns {Promise} - Returns a node-fetch fetch() promise of the SD user data
  */
-const addUserToServiceDeskProject = (user, secret) => {
+const addUserToServiceDeskProject = (formData, user, secret) => {
   // Add the customer to the service desk project for the current form submitted
   console.log(
     `Adding customer account to the ${formData.projectName} project...`
@@ -269,6 +268,7 @@ const fetchFormData = (form_id) => {
   let rawFormData = fs.readFileSync("form_data.json");
   let tempformData = JSON.parse(rawFormData);
   var foundForm = false;
+  var formData = {};
   tempformData.forEach((form, index) => {
     if (form.form_id.toString() === form_id) {
       formData = form;
@@ -288,16 +288,16 @@ const createServiceDeskRequest = (form_submission_data, secret) => {};
  * @param {Object} data - The details of the form submission from dynamoDb
  * @returns {Object} - Returns the relevant form data.
  */
-const submitTicket = (data) => {
-  let form_submission_data = JSON.parse(data.Item.payload);
+const submitTicket = (form_submission_data) => {
   // Fetch form_data.json based on form_id.
-  fetchFormData(form_submission_data.form_id.toString());
+  var formData = fetchFormData(form_submission_data.form_id.toString());
+  console.log("Form Data: ", formData);
   // Login to vault and then submit the ticket via:
   // 1. Checking if the email provided is already a customer on Service Desk
   // 1.1 If the user is not a customer, create the customer
   // 2. Add the customer account to the Service Desk project based on the form_id
   // 3. Submit a new request based on the request type provided.
-  vaultLogin().then((authResult) => {
+  return vaultLogin().then((authResult) => {
     console.log(authResult);
     vault.token = authResult.auth.client_token;
     var secret = "";
@@ -313,7 +313,7 @@ const submitTicket = (data) => {
       })
       .then((user) => {
         // Add user to the service desk project
-        return addUserToServiceDeskProject(user, secret);
+        return addUserToServiceDeskProject(formData, user, secret);
       })
       .then((projectResponse) => {
         // Create the request ticket
@@ -330,7 +330,6 @@ const submitTicket = (data) => {
         console.log("Error when fetching vault SD token.");
       });
   });
-  console.log(data);
 };
 
 /**
@@ -417,15 +416,23 @@ module.exports.verify = (event, context, callback) => {
       if (res.hasOwnProperty("Item")) {
         // Parse the response
         const formDataFromDB = JSON.parse(res.Item.payload);
+        console.log(formDataFromDB);
         // Submit the ticket with data from dynamoDB
         submitTicket(formDataFromDB);
         // Format a redirection url
-        var redirection_url = `${formDataFromDB.website}/thank-you/?email=${formDataFromDB.email}`;
+        var redirection_url = `${res.Item.website}/thank-you/?email=${formDataFromDB.email}`;
+        console.log(redirection_url);
+        // const response = {
+        //   statusCode: 301,
+        //   headers: {
+        //     Location: redirection_url,
+        //   },
+        // };
         const response = {
-          statusCode: 301,
-          headers: {
-            Location: redirection_url,
-          },
+          statusCode: 200,
+          body: JSON.stringify({
+            message: `Verified.`,
+          }),
         };
         callback(null, response);
       } else {
