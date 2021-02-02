@@ -98,7 +98,10 @@ const submitFormEntry = (formEntry) => {
     TableName: process.env.ENTRIES_TABLE,
     Item: formEntry,
   };
-  return dynamoDb.put(formEntryInfo).promise();
+  return dynamoDb
+    .put(formEntryInfo)
+    .promise()
+    .then((res) => formEntry);
 };
 /**
  * Creates an Object with neccessary dynamoDb attributes.
@@ -128,6 +131,7 @@ const verifySubmission = (event) => {
       id: token,
     },
   };
+  console.log(params);
   return dynamoDb
     .get(params)
     .promise()
@@ -453,10 +457,11 @@ module.exports.verify = async (event, context, callback) => {
         },
       });
     } else {
-      throw "FailedToVerifyFormSubmission";
+      throw new Error("FailedToVerifyFormSubmission");
     }
   } catch (err) {
-    await publishSNSMessage(err);
+    console.log(err.message);
+    await publishSNSMessage(err.message);
     callback(null, {
       statusCode: 500,
       body: JSON.stringify({
@@ -475,10 +480,10 @@ module.exports.submit = async (event, context, callback) => {
     // Also check that the requestBody has a length > than 0
     if (!formValid) {
       console.error("Validation Failed");
-      throw "FormValidationFailed";
+      throw new Error("FormValidationFailed");
     } else {
       var inputs = getVerificationEmailTemplateInputs(requestBody);
-      var res = await submitFormEntry(
+      var formEntry = await submitFormEntry(
         formEntryStruct(event.headers.origin, requestBody["email"], requestBody)
       );
       // Send the template email
@@ -486,7 +491,7 @@ module.exports.submit = async (event, context, callback) => {
         { name: inputs["fullName"] },
         "confirmation_dev",
         requestBody["email"],
-        res.id,
+        formEntry.id,
         event
       );
       callback(null, {
@@ -497,13 +502,13 @@ module.exports.submit = async (event, context, callback) => {
         },
         body: JSON.stringify({
           message: `Sucessfully submitted form with email ${requestBody["email"]}`,
-          formId: res.id,
+          formId: formEntry.id,
         }),
       });
     }
   } catch (err) {
-    console.log(err);
-    await publishSNSMessage(err);
+    console.log(err.message);
+    await publishSNSMessage(err.message);
     callback(null, {
       statusCode: 500,
       headers: {
