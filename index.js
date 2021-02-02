@@ -282,7 +282,55 @@ const fetchFormData = (form_id) => {
  * @param {Object} form_submission_data - The details of the form submission from dynamoDb
  * @returns {Object} - Returns the relevant form data.
  */
-const createServiceDeskRequest = (form_submission_data, secret) => {};
+const createServiceDeskRequest = (form_submission_data, formData, secret) => {
+  // https://docs.atlassian.com/jira-servicedesk/REST/3.6.2/#servicedeskapi/request-createCustomerRequest
+  let preparedSubmissionData = form_submission_data;
+  let requestEmail = preparedSubmissionData["email"];
+  delete preparedSubmissionData["email"];
+  delete preparedSubmissionData["form_id"];
+  // Prepare any checkbox values for ticket submission.
+  // https://docs.atlassian.com/jira-servicedesk/REST/3.6.2/#fieldformats
+  for (const key in preparedSubmissionData) {
+    if (Array.isArray(preparedSubmissionData[key])) {
+      let mappedVals = [];
+      for (let i = 0; i < preparedSubmissionData[key].length; i++) {
+        mappedVals.push({ id: preparedSubmissionData[key][i] });
+      }
+      preparedSubmissionData[key] = mappedVals;
+    }
+  }
+  let payload = {
+    serviceDeskId: formData.projectId,
+    requestTypeId: formData.requestTypeId,
+    requestFieldValues: preparedSubmissionData,
+    raiseOnBehalfOf: requestEmail,
+  };
+  console.log("Submitted payload: ", payload);
+  return serviceDeskRequest(
+    `/rest/servicedeskapi/request`,
+    "POST",
+    secret,
+    payload
+  )
+    .then((res) => {
+      if (!res.ok) {
+        console.log("response text: ", res);
+        console.log("Creating service desk request: ", res);
+        // Check the response is not 404 since this represents the
+        // user was not found.
+        if (res.status !== 404) {
+          throw new Error(
+            `HTTP status ${res.status}: FailedToCreateServiceDeskRequest}`
+          );
+        }
+      }
+      return res.json();
+    })
+    .catch((err) => {
+      console.log(err);
+      console.log("An error occured when submitting the new ticket.");
+    });
+};
 /**
  * Main submit ticket logic
  * @param {Object} data - The details of the form submission from dynamoDb
@@ -317,7 +365,7 @@ const submitTicket = (form_submission_data) => {
       })
       .then((projectResponse) => {
         // Create the request ticket
-        return createServiceDeskRequest(form_submission_data, secret);
+        return createServiceDeskRequest(form_submission_data, formData, secret);
       })
       .then((res) => {
         console.log(res);
@@ -422,17 +470,11 @@ module.exports.verify = (event, context, callback) => {
         // Format a redirection url
         var redirection_url = `${res.Item.website}/thank-you/?email=${formDataFromDB.email}`;
         console.log(redirection_url);
-        // const response = {
-        //   statusCode: 301,
-        //   headers: {
-        //     Location: redirection_url,
-        //   },
-        // };
         const response = {
-          statusCode: 200,
-          body: JSON.stringify({
-            message: `Verified.`,
-          }),
+          statusCode: 301,
+          headers: {
+            Location: redirection_url,
+          },
         };
         callback(null, response);
       } else {
