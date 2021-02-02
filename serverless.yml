@@ -10,6 +10,7 @@ provider:
   lambdaHashingVersion: 20201221
   environment:
     ENTRIES_TABLE: ${self:service}-${opt:stage, self:provider.stage}
+    SNS_TOPIC_ARN: !Ref FormsSNSTopic
   apiGateway:
     shouldStartNameWithService: true
     apiKeys:
@@ -31,6 +32,7 @@ provider:
         - dynamodb:PutItem
         - ses:SendTemplatedEmail
         - sts:AssumeRole
+        - sns:Publish
       Resource: "*"
 # Serverless functions
 functions:
@@ -74,6 +76,10 @@ functions:
           private: false
 resources:
   Resources:
+    FormsSNSTopic:
+      Type: "AWS::SNS::Topic"
+      Properties:
+        TopicName: ServerlessFormsTopic
     FormEntriesDynamoDbTable:
       Type: "AWS::DynamoDB::Table"
       DeletionPolicy: Retain
