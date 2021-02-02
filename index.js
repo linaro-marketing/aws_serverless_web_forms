@@ -128,7 +128,10 @@ const verifySubmission = (event) => {
       id: token,
     },
   };
-  return dynamoDb.get(params).promise();
+  return dynamoDb
+    .get(params)
+    .promise()
+    .then((res) => res.json());
 };
 /**
  * Service Desk Request helper function which
