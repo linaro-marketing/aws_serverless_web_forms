@@ -98,10 +98,7 @@ const submitFormEntry = (formEntry) => {
     TableName: process.env.ENTRIES_TABLE,
     Item: formEntry,
   };
-  return dynamoDb
-    .put(formEntryInfo)
-    .promise()
-    .then((res) => formEntry);
+  return dynamoDb.put(formEntryInfo).promise();
 };
 /**
  * Creates an Object with neccessary dynamoDb attributes.
@@ -131,10 +128,7 @@ const verifySubmission = (event) => {
       id: token,
     },
   };
-  return dynamoDb
-    .get(params)
-    .promise()
-    .then((res) => res);
+  return dynamoDb.get(params).promise();
 };
 /**
  * Service Desk Request helper function which
@@ -183,46 +177,38 @@ const serviceDeskRequest = (
  * @param {string} secret - The Service Desk account password. Username is provided via process.env.SERVICE_DESK_USERNAME
  * @returns {Promise} - Returns a node-fetch fetch() promise of the SD user data
  */
-const getServiceDeskUserAccount = (form_submission_data, secret) => {
+const getServiceDeskUserAccount = async (form_submission_data, secret) => {
   console.log("Fetching user SD user account...");
-  return serviceDeskRequest(
+  var sdResponse = await serviceDeskRequest(
     `/rest/api/2/user?username=${form_submission_data.email}`,
     "GET",
     secret
-  )
-    .then((res) => {
-      if (!res.ok) {
-        // Check the response is not 404 since this represents the
-        // user was not found.
-        if (res.status !== 404) {
-          throw new Error(
-            `HTTP status ${res.status}: FailedToAddUserToServiceDeskProject}`
-          );
-        }
-      }
-      return res.json();
-    })
-    .then((res) => {
-      // User not found so create an account
-      if (res.hasOwnProperty("errorMessages")) {
-        console.log("User account not found, creating customer account...");
-        var full_name = `${form_submission_data.name}`;
-        return serviceDeskRequest(
-          `/rest/servicedeskapi/customer`,
-          "POST",
-          secret,
-          { email: form_submission_data.email, fullName: full_name },
-          true
-        ).then((res) => res.json());
-      } else {
-        return res;
-      }
-    })
-    .catch((err) => {
-      console.log(err);
-      console.log("An error occured when submitting the service desk ticket.");
-      return false;
-    });
+  );
+  if (!sdResponse.ok) {
+    // Check the response is not 404 since this represents the
+    // user was not found.
+    if (sdResponse.status !== 404) {
+      throw new Error(
+        `HTTP status ${sdResponse.status}: FailedToAddUserToServiceDeskProject}`
+      );
+    }
+  }
+  var jsonRes = await sdResponse.json();
+  // User not found so create an account
+  if (jsonRes.hasOwnProperty("errorMessages")) {
+    console.log("User account not found, creating customer account...");
+    var full_name = `${form_submission_data.name}`;
+    var createCustomerRes = await serviceDeskRequest(
+      `/rest/servicedeskapi/customer`,
+      "POST",
+      secret,
+      { email: form_submission_data.email, fullName: full_name },
+      true
+    );
+    return await createCustomerRes.json();
+  } else {
+    return jsonRes;
+  }
 };
 /**
  * Adds a user to the specified Service Desk Project
@@ -230,13 +216,13 @@ const getServiceDeskUserAccount = (form_submission_data, secret) => {
  * @param {string} secret - The Service Desk account password. Username is provided via process.env.SERVICE_DESK_USERNAME
  * @returns {Promise} - Returns a node-fetch fetch() promise of the SD user data
  */
-const addUserToServiceDeskProject = (formData, user, secret) => {
+const addUserToServiceDeskProject = async (formData, user, secret) => {
   // Add the customer to the service desk project for the current form submitted
   console.log(
     `Adding customer account to the ${formData.projectName} project...`
   );
   // Make the request to add the user to the project based on the form_id provided in the form submission.
-  serviceDeskRequest(
+  var res = await serviceDeskRequest(
     `/rest/servicedeskapi/servicedesk/${formData.projectId}/customer`,
     "POST",
     secret,
@@ -244,20 +230,13 @@ const addUserToServiceDeskProject = (formData, user, secret) => {
       usernames: [user.emailAddress],
     },
     true
-  )
-    .then((res) => {
-      if (!res.ok) {
-        throw new Error(
-          `HTTP status ${res.status}: FailedToAddUserToServiceDeskProject}`
-        );
-      }
-      return res.json();
-    })
-    .then((res) => {
-      console.log("Added user to service desk project...");
-      console.log(res);
-      // Create the request
-    });
+  );
+  if (!res.ok) {
+    throw new Error(
+      `HTTP status ${res.status}: FailedToAddUserToServiceDeskProject}`
+    );
+  }
+  return await res.json();
 };
 /**
  * Adds a user to the specified Service Desk Project
@@ -282,7 +261,11 @@ const fetchFormData = (form_id) => {
  * @param {Object} form_submission_data - The details of the form submission from dynamoDb
  * @returns {Object} - Returns the relevant form data.
  */
-const createServiceDeskRequest = (form_submission_data, formData, secret) => {
+const createServiceDeskRequest = async (
+  form_submission_data,
+  formData,
+  secret
+) => {
   // https://docs.atlassian.com/jira-servicedesk/REST/3.6.2/#servicedeskapi/request-createCustomerRequest
   let preparedSubmissionData = form_submission_data;
   let requestEmail = preparedSubmissionData["email"];
@@ -306,37 +289,31 @@ const createServiceDeskRequest = (form_submission_data, formData, secret) => {
     raiseOnBehalfOf: requestEmail,
   };
   console.log("Submitted payload: ", payload);
-  return serviceDeskRequest(
+  var res = await serviceDeskRequest(
     `/rest/servicedeskapi/request`,
     "POST",
     secret,
     payload
-  )
-    .then((res) => {
-      if (!res.ok) {
-        console.log("response text: ", res);
-        console.log("Creating service desk request: ", res);
-        // Check the response is not 404 since this represents the
-        // user was not found.
-        if (res.status !== 404) {
-          throw new Error(
-            `HTTP status ${res.status}: FailedToCreateServiceDeskRequest}`
-          );
-        }
-      }
-      return res.json();
-    })
-    .catch((err) => {
-      console.log(err);
-      console.log("An error occured when submitting the new ticket.");
-    });
+  );
+  if (!res.ok) {
+    console.log("response text: ", res);
+    console.log("Creating service desk request: ", res);
+    // Check the response is not 404 since this represents the
+    // user was not found.
+    if (res.status !== 404) {
+      throw new Error(
+        `HTTP status ${res.status}: FailedToCreateServiceDeskRequest}`
+      );
+    }
+  }
+  return await res.json();
 };
 /**
  * Main submit ticket logic
  * @param {Object} data - The details of the form submission from dynamoDb
  * @returns {Object} - Returns the relevant form data.
  */
-const submitTicket = (form_submission_data) => {
+const submitTicket = async (form_submission_data) => {
   // Fetch form_data.json based on form_id.
   var formData = fetchFormData(form_submission_data.form_id.toString());
   console.log("Form Data: ", formData);
@@ -345,39 +322,23 @@ const submitTicket = (form_submission_data) => {
   // 1.1 If the user is not a customer, create the customer
   // 2. Add the customer account to the Service Desk project based on the form_id
   // 3. Submit a new request based on the request type provided.
-  return vaultLogin().then((authResult) => {
-    console.log(authResult);
-    vault.token = authResult.auth.client_token;
-    var secret = "";
-    vault
-      .read(process.env.VAULT_SECRET_PATH)
-      .then((result) => {
-        secret = result.data.pw;
-        return result.data.pw;
-      })
-      .then(async (secret) => {
-        // Get a user account
-        return getServiceDeskUserAccount(form_submission_data, secret);
-      })
-      .then((user) => {
-        // Add user to the service desk project
-        return addUserToServiceDeskProject(formData, user, secret);
-      })
-      .then((projectResponse) => {
-        // Create the request ticket
-        return createServiceDeskRequest(form_submission_data, formData, secret);
-      })
-      .then((res) => {
-        console.log(res);
-      })
-      .then(() => {
-        return vault.tokenRevokeSelf();
-      })
-      .catch((err) => {
-        console.log(err);
-        console.log("Error when fetching vault SD token.");
-      });
-  });
+  const authResult = await vaultLogin();
+  console.log(authResult);
+  vault.token = authResult.auth.client_token;
+  var secret = "";
+  var result = await vault.read(process.env.VAULT_SECRET_PATH);
+  secret = result.data.pw;
+  var user = await getServiceDeskUserAccount(form_submission_data, secret);
+  // Add user to the service desk project
+  await addUserToServiceDeskProject(formData, user, secret);
+  // Create the request ticket
+  var res = await createServiceDeskRequest(
+    form_submission_data,
+    formData,
+    secret
+  );
+  console.log(res);
+  await vault.tokenRevokeSelf();
 };
 
 /**
@@ -453,106 +414,102 @@ const validateForm = (formData) => {
   }
   return true;
 };
-module.exports.verify = (event, context, callback) => {
-  console.log(event);
-  verifySubmission(event)
-    .then((res) => {
-      console.log(res);
-      console.log(res.Item);
-      // Check if the result contains data.
-      // If it does, the id has been found
-      if (res.hasOwnProperty("Item")) {
-        // Parse the response
-        const formDataFromDB = JSON.parse(res.Item.payload);
-        console.log(formDataFromDB);
-        // Submit the ticket with data from dynamoDB
-        submitTicket(formDataFromDB);
-        // Format a redirection url
-        var redirection_url = `${res.Item.website}/thank-you/?email=${formDataFromDB.email}`;
-        console.log(redirection_url);
-        const response = {
-          statusCode: 301,
-          headers: {
-            Location: redirection_url,
-          },
-        };
-        callback(null, response);
-      } else {
-        callback(null, {
-          statusCode: 500,
-          body: JSON.stringify({
-            message: `Unable to verify form submission! You may have already verified your form submission.`,
-          }),
-        });
-      }
-    })
-    .catch((err) => {
-      console.log(err);
+/**
+ * Publishes a message to our form service sns topic.
+ * @param {string} message - The message to publish to sns.
+ * @returns {Promise} - Returns a promise.
+ */
+const publishSNSMessage = (message) => {
+  // Setup params
+  var params = {
+    Message: message,
+    TopicArn: process.env.SNS_TOPIC_ARN,
+  };
+  return new AWS.SNS({ apiVersion: "2010-03-31" }).publish(params).promise();
+};
+module.exports.verify = async (event, context, callback) => {
+  try {
+    console.log(event);
+    const res = await verifySubmission(event);
+    console.log(res);
+    console.log(res.Item);
+    // Check if the result contains data.
+    // If it does, the id has been found
+    if (res.hasOwnProperty("Item")) {
+      // Parse the response
+      const formDataFromDB = JSON.parse(res.Item.payload);
+      console.log(formDataFromDB);
+      // Submit the ticket with data from dynamoDB
+      await submitTicket(formDataFromDB);
+      // Format a redirection url
+      var redirection_url = `${res.Item.website}/thank-you/?email=${formDataFromDB.email}`;
       callback(null, {
-        statusCode: 500,
+        statusCode: 301,
+        headers: {
+          Location: redirection_url,
+        },
+      });
+    } else {
+      throw "FailedToVerifyFormSubmission";
+    }
+  } catch (err) {
+    await publishSNSMessage(err);
+    callback(null, {
+      statusCode: 500,
+      body: JSON.stringify({
+        message: err,
+      }),
+    });
+  }
+};
+module.exports.submit = async (event, context, callback) => {
+  try {
+    console.log(event);
+    // Get the POST request body
+    const requestBody = JSON.parse(event.body);
+    // Some type validation
+    var formValid = validateForm(requestBody);
+    // Also check that the requestBody has a length > than 0
+    if (!formValid) {
+      console.error("Validation Failed");
+      throw "FormValidationFailed";
+    } else {
+      var inputs = getVerificationEmailTemplateInputs(requestBody);
+      var res = await submitFormEntry(
+        formEntryStruct(event.headers.origin, requestBody["email"], requestBody)
+      );
+      // Send the template email
+      await sendVerificationEmail(
+        { name: inputs["fullName"] },
+        "confirmation_dev",
+        requestBody["email"],
+        res.id,
+        event
+      );
+      callback(null, {
+        statusCode: 200,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Credentials": true,
+        },
         body: JSON.stringify({
-          message: `Unable to submit form.`,
+          message: `Sucessfully submitted form with email ${requestBody["email"]}`,
+          formId: res.id,
         }),
       });
-    });
-};
-module.exports.submit = (event, context, callback) => {
-  console.log(event);
-  // Get the POST request body
-  const requestBody = JSON.parse(event.body);
-  // Some type validation
-  var formValid = validateForm(requestBody);
-  // Also check that the requestBody has a length > than 0
-  if (!formValid) {
-    console.error("Validation Failed");
+    }
+  } catch (err) {
+    console.log(err);
+    await publishSNSMessage(err);
     callback(null, {
-      statusCode: 200,
+      statusCode: 500,
       headers: {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Credentials": true,
       },
       body: JSON.stringify({
-        message: "Couldn't submit form because of validation errors.",
+        message: `${err}`,
       }),
     });
-  } else {
-    var inputs = getVerificationEmailTemplateInputs(requestBody);
-    submitFormEntry(
-      formEntryStruct(event.headers.origin, requestBody["email"], requestBody)
-    )
-      .then((res) => {
-        // Send the template email
-        sendVerificationEmail(
-          { name: inputs["fullName"] },
-          "confirmation_dev",
-          requestBody["email"],
-          res.id,
-          event
-        );
-        callback(null, {
-          statusCode: 200,
-          headers: {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Credentials": true,
-          },
-          body: JSON.stringify({
-            message: `Sucessfully submitted form with email ${requestBody["email"]}`,
-            formId: res.id,
-          }),
-        });
-      })
-      .catch((err) => {
-        console.log(err);
-        callback(null, {
-          statusCode: 500,
-          headers: {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Credentials": true,
-          },
-          body: JSON.stringify({
-            message: `Unable to submit form with email ${requestBody["email"]}`,
-          }),
-        });
-      });
   }
 };
