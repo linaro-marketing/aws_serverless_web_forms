@@ -4,7 +4,7 @@ useDotenv: true
 # Our serverless infra provider section
 provider:
   name: aws
-  stage: dev
+  stage: ${opt:stage}
   runtime: nodejs12.x
   region: us-east-1
   lambdaHashingVersion: 20201221
