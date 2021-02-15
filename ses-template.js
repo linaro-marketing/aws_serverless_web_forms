@@ -1,5 +1,4 @@
 const path = require("path");
-
 // List of templates
 const templateList = [
   {
@@ -7,7 +6,6 @@ const templateList = [
     templateSubject: "Linaro - Confirm your website form submission",
   },
 ];
-
 // Check the templates list for duplicates
 // and throw and error if a template ID is duplicated.
 templateList.reduce((acc, templateInfo) => {
@@ -20,7 +18,6 @@ templateList.reduce((acc, templateInfo) => {
   acc[templateId] = 1;
   return acc;
 }, {});
-
 /**
  * @param {Object} serverless - Serverless instance
  * @param {Object} _options - runtime options
