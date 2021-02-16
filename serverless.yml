@@ -14,7 +14,7 @@ provider:
   apiGateway:
     shouldStartNameWithService: true
     apiKeys:
-      - name: website
+      - name: website-${opt:stage, self:provider.stage}
     usagePlan:
       quota:
         limit: 300
@@ -71,7 +71,7 @@ functions:
     description: Verify the GET token header from the email verification link. Create the new Ticket. Delete the form entry from DynamoDB.
     events:
       - http:
-          path: formVerfiy
+          path: formVerify
           method: get
           private: false
 resources:
@@ -79,7 +79,7 @@ resources:
     FormsSNSTopic:
       Type: "AWS::SNS::Topic"
       Properties:
-        TopicName: ServerlessFormsTopic
+        TopicName: ServerlessFormsTopic-${opt:stage, self:provider.stage}
     FormEntriesDynamoDbTable:
       Type: "AWS::DynamoDB::Table"
       DeletionPolicy: Retain
