@@ -34,7 +34,9 @@ This will execute `setup_form_data.js` and require your Service Desk login crede
 
 ### Deploying
 
-To deploy the stack simply run `sls deploy -v`.
+To deploy the staging environment stack run `aws2-wrap --profile <YOUR_AWS_PROFILE> --exec "sls deploy -v --stage dev"`.
+
+To deploy the production environment stack run `aws2-wrap --profile <YOUR_AWS_PROFILE> --exec "sls deploy -v --stage prod"`.
 
 #### IAM Permissions
 
