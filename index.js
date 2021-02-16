@@ -63,7 +63,7 @@ function getSignedAWSLoginConfig(role, id) {
   };
 }
 const sendVerificationEmail = (inputs, templateName, sendTo, formId, event) => {
-  let confirmationEmailLink = `https://${event.requestContext.domainName}/${event.requestContext.stage}/formVerfiy?token=${formId}`;
+  let confirmationEmailLink = `https://${event.requestContext.domainName}/${event.requestContext.stage}/formVerify?token=${formId}`;
   let templateData = {
     confirmation_link: confirmationEmailLink,
     name: inputs["name"],
@@ -132,10 +132,7 @@ const verifySubmission = (event) => {
     },
   };
   console.log(params);
-  return dynamoDb
-    .get(params)
-    .promise()
-    .then((res) => res.json());
+  return dynamoDb.get(params).promise();
 };
 /**
  * Service Desk Request helper function which
@@ -437,6 +434,7 @@ const publishSNSMessage = (message) => {
 module.exports.verify = async (event, context, callback) => {
   try {
     console.log(event);
+    console.log("Verifying the submission...");
     const res = await verifySubmission(event);
     console.log(res);
     console.log(res.Item);
@@ -449,6 +447,8 @@ module.exports.verify = async (event, context, callback) => {
       // Submit the ticket with data from dynamoDB
       await submitTicket(formDataFromDB);
       // Format a redirection url
+      console.log("Form Data from DB: ", formDataFromDB);
+      console.log("Email: ", formDataFromDB.email);
       var redirection_url = `${res.Item.website}/thank-you/?email=${formDataFromDB.email}`;
       callback(null, {
         statusCode: 301,
