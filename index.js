@@ -134,6 +134,22 @@ const verifySubmission = (event) => {
   console.log(params);
   return dynamoDb.get(params).promise();
 };
+// Delete the submission from dynamo DB once the request has been submitted
+// successfully.
+const deleteSubmission = (event) => {
+  console.log("Deleting submission entry...");
+  if (!event.queryStringParameters.token) return false;
+  let token = event.queryStringParameters.token;
+  // Query params with "token"
+  let params = {
+    TableName: process.env.ENTRIES_TABLE,
+    Key: {
+      id: token,
+    },
+  };
+  console.log(params);
+  return dynamoDb.delete(params).promise();
+};
 /**
  * Service Desk Request helper function which
  * returns a node-fetch promise.
@@ -317,7 +333,7 @@ const createServiceDeskRequest = async (
  * @param {Object} data - The details of the form submission from dynamoDb
  * @returns {Object} - Returns the relevant form data.
  */
-const submitTicket = async (form_submission_data) => {
+const submitTicket = async (form_submission_data, event) => {
   // Fetch form_data.json based on form_id.
   var formData = fetchFormData(form_submission_data.form_id.toString());
   console.log("Form Data: ", formData);
@@ -342,6 +358,7 @@ const submitTicket = async (form_submission_data) => {
     secret
   );
   console.log(res);
+  await deleteSubmission(event);
   await vault.tokenRevokeSelf();
 };
 
@@ -431,6 +448,13 @@ const publishSNSMessage = (message) => {
   };
   return new AWS.SNS({ apiVersion: "2010-03-31" }).publish(params).promise();
 };
+/**
+ * Function handler for the verification of a submission. Runs when a form confirmation
+ * link is clicked.
+ * @param {*} event
+ * @param {*} context
+ * @param {*} callback
+ */
 module.exports.verify = async (event, context, callback) => {
   try {
     console.log(event);
@@ -445,7 +469,7 @@ module.exports.verify = async (event, context, callback) => {
       const formDataFromDB = JSON.parse(res.Item.payload);
       console.log(formDataFromDB);
       // Submit the ticket with data from dynamoDB
-      await submitTicket(formDataFromDB);
+      await submitTicket(formDataFromDB, event);
       // Format a redirection url
       console.log("Form Data from DB: ", formDataFromDB);
       console.log("Email: ", formDataFromDB.email);
