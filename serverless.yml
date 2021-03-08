@@ -30,6 +30,7 @@ provider:
         - dynamodb:Scan
         - dynamodb:GetItem
         - dynamodb:PutItem
+        - dynamodb:DeleteItem
         - ses:SendTemplatedEmail
         - sts:AssumeRole
         - sns:Publish
