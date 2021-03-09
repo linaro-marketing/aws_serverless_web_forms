@@ -119,11 +119,30 @@ const formEntryStruct = (origin, email, requestBody) => {
     submittedAt: timestamp,
   };
 };
+
+/**
+ * Updates a table entry value.
+ * @param {*} uniqueId The unique `id` value of the table entry
+ * @param {*} attribute The attribute to update
+ * @param {*} value The value to update it with.
+ * @param {*} table The name of the DynamoDB table.
+ * @returns {Promise} A promise of updating the table entry.
+ */
+const updateSubmission = (uniqueId, attribute, value, table) => {
+  var params = {
+    TableName: table,
+    Key: { id: uniqueId },
+    UpdateExpression: "set #a = :x",
+    ExpressionAttributeNames: { "#a": attribute },
+    ExpressionAttributeValues: {
+      ":x": value,
+    },
+  };
+  return dynamoDb.update(params).promise();
+};
 // Verify the submission by finding a dynamoDb entry
 // with an id equal to that of the GET token param.
-const verifySubmission = (event) => {
-  if (!event.queryStringParameters.token) return false;
-  let token = event.queryStringParameters.token;
+const verifySubmission = async (token) => {
   // Query params with "token"
   let params = {
     TableName: process.env.ENTRIES_TABLE,
@@ -132,6 +151,7 @@ const verifySubmission = (event) => {
     },
   };
   console.log(params);
+  // Get the current item based on id.
   return dynamoDb.get(params).promise();
 };
 // Delete the submission from dynamo DB once the request has been submitted
@@ -358,7 +378,7 @@ const submitTicket = async (form_submission_data, event) => {
     secret
   );
   console.log(res);
-  await deleteSubmission(event);
+  // await deleteSubmission(event);
   await vault.tokenRevokeSelf();
 };
 
@@ -459,12 +479,48 @@ module.exports.verify = async (event, context, callback) => {
   try {
     console.log(event);
     console.log("Verifying the submission...");
-    const res = await verifySubmission(event);
-    console.log(res);
-    console.log(res.Item);
-    // Check if the result contains data.
-    // If it does, the id has been found
+    if (!event.queryStringParameters.token) {
+      callback(null, {
+        statusCode: 500,
+        body: JSON.stringify({
+          message: "Invalid token provided.",
+        }),
+      });
+    }
+    const token = event.queryStringParameters.token;
+    const res = await verifySubmission(token);
+    var needsSubmitting = false;
     if (res.hasOwnProperty("Item")) {
+      let currentData = res.Item.payload;
+      if (currentData.hasOwnProperty("status")) {
+        if (currentData["status"] === "VERIFIED") {
+          needsSubmitting = false;
+        } else {
+          await updateSubmission(
+            token,
+            "status",
+            "verified",
+            process.env.ENTRIES_TABLE
+          );
+          console.log("Setting the status of submission to verified.");
+          needsSubmitting = true;
+        }
+      } else {
+        await updateSubmission(
+          token,
+          "status",
+          "verified",
+          process.env.ENTRIES_TABLE
+        );
+        console.log("Setting the status of submission to verified.");
+        needsSubmitting = true;
+      }
+    } else {
+      needsSubmitting = false;
+    }
+    // Check if the res is true, if true then execute the update sequence
+    // if false, return.
+    if (needsSubmitting) {
       // Parse the response
       const formDataFromDB = JSON.parse(res.Item.payload);
       console.log(formDataFromDB);
@@ -481,7 +537,12 @@ module.exports.verify = async (event, context, callback) => {
         },
       });
     } else {
-      throw new Error("FailedToVerifyFormSubmission");
+      callback(null, {
+        statusCode: 301,
+        headers: {
+          Location: "https://www.linaro.org/thank-you/",
+        },
+      });
     }
   } catch (err) {
     console.log(err.message);
