@@ -133,6 +133,7 @@ const updateSubmission = (uniqueId, attribute, value, table) => {
     TableName: table,
     Key: { id: uniqueId },
     UpdateExpression: "set #a = :x",
+    ConditionExpression: "attribute_not_exists (verified)",
     ExpressionAttributeNames: { "#a": attribute },
     ExpressionAttributeValues: {
       ":x": value,
@@ -487,49 +488,27 @@ module.exports.verify = async (event, context, callback) => {
         }),
       });
     }
-    const token = event.queryStringParameters.token;
-    const res = await verifySubmission(token);
-    var needsSubmitting = false;
-    if (res.hasOwnProperty("Item")) {
-      let currentData = res.Item.payload;
-      if (currentData.hasOwnProperty("status")) {
-        if (currentData["status"] === "VERIFIED") {
-          needsSubmitting = false;
-        } else {
-          await updateSubmission(
-            token,
-            "status",
-            "verified",
-            process.env.ENTRIES_TABLE
-          );
-          console.log("Setting the status of submission to verified.");
-          needsSubmitting = true;
-        }
-      } else {
-        await updateSubmission(
-          token,
-          "status",
-          "verified",
-          process.env.ENTRIES_TABLE
-        );
-        console.log("Setting the status of submission to verified.");
-        needsSubmitting = true;
-      }
-    } else {
-      needsSubmitting = false;
-    }
-    // Check if the res is true, if true then execute the update sequence
-    // if false, return.
-    if (needsSubmitting) {
+    const verifyRes = await verifySubmission(event.queryStringParameters.token);
+    console.log(verifyRes);
+    if (verifyRes.hasOwnProperty("Item")) {
+      console.log("valid");
+      const res = await updateSubmission(
+        event.queryStringParameters.token,
+        "verified",
+        "VERIFIED",
+        process.env.ENTRIES_TABLE
+      );
+      console.log(res);
+      console.log("Setting the status of submission to verified.");
       // Parse the response
-      const formDataFromDB = JSON.parse(res.Item.payload);
+      const formDataFromDB = JSON.parse(verifyRes.Item.payload);
       console.log(formDataFromDB);
       // Submit the ticket with data from dynamoDB
       await submitTicket(formDataFromDB, event);
       // Format a redirection url
       console.log("Form Data from DB: ", formDataFromDB);
       console.log("Email: ", formDataFromDB.email);
-      var redirection_url = `${res.Item.website}/thank-you/?email=${formDataFromDB.email}`;
+      var redirection_url = `${verifyRes.Item.website}/thank-you/?email=${formDataFromDB.email}`;
       callback(null, {
         statusCode: 301,
         headers: {
@@ -546,6 +525,15 @@ module.exports.verify = async (event, context, callback) => {
     }
   } catch (err) {
     console.log(err.message);
+    // Catch the failure of the conditional update request.
+    if (err.message === "The conditional request failed") {
+      callback(null, {
+        statusCode: 301,
+        headers: {
+          Location: "https://www.linaro.org/thank-you/",
+        },
+      });
+    }
     await publishSNSMessage(err.message);
     callback(null, {
       statusCode: 500,
