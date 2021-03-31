@@ -364,23 +364,26 @@ const submitTicket = async (form_submission_data, event) => {
   // 2. Add the customer account to the Service Desk project based on the form_id
   // 3. Submit a new request based on the request type provided.
   const authResult = await vaultLogin();
-  console.log(authResult);
-  vault.token = authResult.auth.client_token;
-  var secret = "";
-  var result = await vault.read(process.env.VAULT_SECRET_PATH);
-  secret = result.data.pw;
-  var user = await getServiceDeskUserAccount(form_submission_data, secret);
-  // Add user to the service desk project
-  await addUserToServiceDeskProject(formData, user, secret);
-  // Create the request ticket
-  var res = await createServiceDeskRequest(
-    form_submission_data,
-    formData,
-    secret
-  );
-  console.log(res);
-  // await deleteSubmission(event);
-  await vault.tokenRevokeSelf();
+  try {
+    console.log(authResult);
+    vault.token = authResult.auth.client_token;
+    var secret = "";
+    var result = await vault.read(process.env.VAULT_SECRET_PATH);
+    secret = result.data.pw;
+    var user = await getServiceDeskUserAccount(form_submission_data, secret);
+    // Add user to the service desk project
+    await addUserToServiceDeskProject(formData, user, secret);
+    // Create the request ticket
+    var res = await createServiceDeskRequest(
+      form_submission_data,
+      formData,
+      secret
+    );
+    console.log(res);
+    // await deleteSubmission(event);
+  } finally {
+    await vault.tokenRevokeSelf();
+  }
 };
 
 /**
