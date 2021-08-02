@@ -239,6 +239,11 @@ const getServiceDeskUserAccount = async (form_submission_data, secret) => {
   if (jsonRes.hasOwnProperty("errorMessages")) {
     console.log("User account not found, creating customer account...");
     var full_name = `${form_submission_data.name}`;
+    // Validate that the full name is not empty, otherwise
+    // set the full name to the email address.
+    if (full_name.length === 0) {
+      full_name = form_submission_data.email;
+    }
     var createCustomerRes = await serviceDeskRequest(
       `/rest/servicedeskapi/customer`,
       "POST",
@@ -439,11 +444,10 @@ const validateForm = (formData) => {
     return false;
   } else {
     // Form id exists - let's check the other values
-    const validRequiredRequestFields = validFormData.fields.requestTypeFields.filter(
-      (entry) => {
+    const validRequiredRequestFields =
+      validFormData.fields.requestTypeFields.filter((entry) => {
         return entry.required === true;
-      }
-    );
+      });
     // Check the form submission contains the required fields.
     for (let i = 0; i < validRequiredRequestFields.length; i++) {
       if (!formData.hasOwnProperty(validRequiredRequestFields[i].fieldId)) {
