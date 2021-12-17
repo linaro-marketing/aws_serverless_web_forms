@@ -132,6 +132,7 @@ const main = async (result) => {
         Buffer.from(`${result.email}:${result.password}`).toString("base64"),
     },
   };
+  console.log(requestHeaders);
   // Check for path arg
   if (argv.path) {
     console.log(`Reading config file - ${argv.path}...`);
