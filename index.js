@@ -348,7 +348,7 @@ const createServiceDeskRequest = async (
     // user was not found.
     if (res.status !== 404) {
       throw new Error(
-        `HTTP status ${res.status}: FailedToCreateServiceDeskRequest}`
+        `HTTP status ${res.status}: FailedToCreateServiceDeskRequest`
       );
     }
   }
@@ -509,13 +509,12 @@ module.exports.verify = async (event, context, callback) => {
       console.log("Setting the status of submission to verified.");
       // Parse the response
       const formDataFromDB = JSON.parse(verifyRes.Item.payload);
-      console.log(formDataFromDB);
+      console.log("Form Data from DB: ", formDataFromDB);
       // Submit the ticket with data from dynamoDB
       await submitTicket(formDataFromDB, event);
       // Format a redirection url
-      console.log("Form Data from DB: ", formDataFromDB);
-      console.log("Email: ", formDataFromDB.email);
-      var redirection_url = `${verifyRes.Item.website}/thank-you/?email=${formDataFromDB.email}`;
+      console.log("Email: ", verifyRes.Item.email);
+      var redirection_url = `${verifyRes.Item.website}/thank-you/?email=${verifyRes.Item.email}`;
       callback(null, {
         statusCode: 301,
         headers: {
