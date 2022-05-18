@@ -278,5 +278,66 @@
       "canRaiseOnBehalfOf": true,
       "canAddRequestParticipants": true
     }
+  },
+  {
+    "form_id": 4,
+    "projectName": "Linaro Contact",
+    "requestTypeName": "Membership Inquiry",
+    "projectId": "17",
+    "requestTypeId": "289",
+    "fields": {
+      "requestTypeFields": [
+        {
+          "fieldId": "customfield_10902",
+          "name": "First Name",
+          "description": "",
+          "required": false,
+          "validValues": [],
+          "jiraSchema": {
+            "type": "string",
+            "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textfield",
+            "customId": 10902
+          }
+        },
+        {
+          "fieldId": "customfield_10903",
+          "name": "Family Name",
+          "description": "",
+          "required": false,
+          "validValues": [],
+          "jiraSchema": {
+            "type": "string",
+            "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textfield",
+            "customId": 10903
+          }
+        },
+        {
+          "fieldId": "customfield_12401",
+          "name": "Company",
+          "description": "",
+          "required": false,
+          "validValues": [],
+          "jiraSchema": {
+            "type": "string",
+            "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textfield",
+            "customId": 12401
+          }
+        },
+        {
+          "fieldId": "customfield_12902",
+          "name": "How can we help you",
+          "description": "",
+          "required": false,
+          "validValues": [],
+          "jiraSchema": {
+            "type": "string",
+            "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textarea",
+            "customId": 12902
+          }
+        }
+      ],
+      "canRaiseOnBehalfOf": true,
+      "canAddRequestParticipants": true
+    }
   }
 ]
