@@ -238,11 +238,18 @@ const getServiceDeskUserAccount = async (form_submission_data, secret) => {
   // User not found so create an account
   if (jsonRes.hasOwnProperty("errorMessages")) {
     console.log("User account not found, creating customer account...");
-    var full_name = `${form_submission_data.name}`;
-    // Validate that the full name is not empty, otherwise
-    // set the full name to the email address.
-    if (full_name.length === 0) {
-      full_name = form_submission_data.email;
+    var full_name = form_submission_data.email;
+    if (
+      Object.prototype.hasOwnProperty.call(
+        form_submission_data,
+        "customfield_10902"
+      ) &&
+      Object.prototype.hasOwnProperty.call(
+        form_submission_data,
+        "customfield_10903"
+      )
+    ) {
+      full_name = `${form_submission_data.customfield_10902} ${form_submission_data.customfield_10903}`;
     }
     var createCustomerRes = await serviceDeskRequest(
       `/rest/servicedeskapi/customer`,
