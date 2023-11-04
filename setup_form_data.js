@@ -4,9 +4,10 @@
 // to retrieve the projectId and requestTypeId
 // It will also validate the request fields against the API
 const fs = require("fs");
-const fetch = require("node-fetch");
+// const fetch = require("node-fetch");
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const prompt = require("prompt");
-const service_desk_domain = "servicedesk.linaro.org";
+const service_desk_domain = "linaro-servicedesk.atlassian.net"; // "servicedesk.linaro.org";
 // Get the args
 var argv = require("yargs/yargs")(process.argv.slice(2)).argv;
 var requestHeaders = {};

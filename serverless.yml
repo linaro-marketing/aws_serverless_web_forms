@@ -1,11 +1,11 @@
 service: serverless-web-forms
-frameworkVersion: "2"
+frameworkVersion: "3"
 useDotenv: true
 # Our serverless infra provider section
 provider:
   name: aws
-  stage: ${opt:stage}
-  runtime: nodejs12.x
+  stage: prod # ${opt:stage}
+  runtime: nodejs18.x
   region: us-east-1
   lambdaHashingVersion: 20201221
   environment:

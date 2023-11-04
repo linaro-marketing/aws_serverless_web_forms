@@ -3,7 +3,8 @@
 const fs = require("fs");
 const uuid = require("uuid");
 const AWS = require("aws-sdk");
-const fetch = require("node-fetch");
+// const fetch = require("node-fetch");
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const nv = require("node-vault");
 var aws4 = require("aws4");
 AWS.config.setPromisesDependency(require("bluebird"));
@@ -221,7 +222,7 @@ const serviceDeskRequest = (
 const getServiceDeskUserAccount = async (form_submission_data, secret) => {
   console.log("Fetching user SD user account...");
   var sdResponse = await serviceDeskRequest(
-    `/rest/api/2/user?username=${form_submission_data.email}`,
+    `/rest/api/3/user/search?query=${form_submission_data.email}`,
     "GET",
     secret
   );
@@ -229,35 +230,43 @@ const getServiceDeskUserAccount = async (form_submission_data, secret) => {
     // Check the response is not 404 since this represents the
     // user was not found.
     if (sdResponse.status !== 404) {
+      console.log("sdResponse.status=", sdResponse.status);
       throw new Error(
         `HTTP status ${sdResponse.status}: FailedToAddUserToServiceDeskProject}`
       );
     }
   }
   var jsonRes = await sdResponse.json();
-  // User not found so create an account
-  if (jsonRes.hasOwnProperty("errorMessages")) {
+  console.log(`Result of searching for ${form_submission_data.email}:`, jsonRes);
+  if (jsonRes.hasOwnProperty("errorMessages") || jsonRes.length == 0) {
+    // User not found so create an account
     console.log("User account not found, creating customer account...");
     var full_name = form_submission_data.email;
     if (
       Object.prototype.hasOwnProperty.call(
         form_submission_data,
-        "customfield_10902"
+        "customfield_13155"
       ) &&
       Object.prototype.hasOwnProperty.call(
         form_submission_data,
-        "customfield_10903"
+        "customfield_13156"
       )
     ) {
-      full_name = `${form_submission_data.customfield_10902} ${form_submission_data.customfield_10903}`;
+      full_name = `${form_submission_data.customfield_13155} ${form_submission_data.customfield_13156}`;
     }
     var createCustomerRes = await serviceDeskRequest(
       `/rest/servicedeskapi/customer`,
       "POST",
       secret,
-      { email: form_submission_data.email, fullName: full_name },
+      { email: form_submission_data.email, displayName: full_name },
       true
     );
+    if (!createCustomerRes.ok) {
+      console.log("Create customer failed with ", await createCustomerRes.text());
+      throw new Error(
+        `HTTP status ${createCustomerRes.status}: FailedToCreateUserAsNewCustomer}`
+      );
+    }
     return await createCustomerRes.json();
   } else {
     return jsonRes;
@@ -274,13 +283,15 @@ const addUserToServiceDeskProject = async (formData, user, secret) => {
   console.log(
     `Adding customer account to the ${formData.projectName} project...`
   );
+  console.log("Incoming user block:");
+  console.log(user[0]);
   // Make the request to add the user to the project based on the form_id provided in the form submission.
   var res = await serviceDeskRequest(
     `/rest/servicedeskapi/servicedesk/${formData.projectId}/customer`,
     "POST",
     secret,
     {
-      usernames: [user.emailAddress],
+      accountIds: [user[0].accountId],
     },
     true
   );
@@ -289,7 +300,7 @@ const addUserToServiceDeskProject = async (formData, user, secret) => {
       `HTTP status ${res.status}: FailedToAddUserToServiceDeskProject}`
     );
   }
-  return await res.json();
+  console.log(await res.text());
 };
 /**
  * Adds a user to the specified Service Desk Project
@@ -349,8 +360,7 @@ const createServiceDeskRequest = async (
     payload
   );
   if (!res.ok) {
-    console.log("response text: ", res);
-    console.log("Creating service desk request: ", res);
+    console.log("Creating service desk request: ", await res.text());
     // Check the response is not 404 since this represents the
     // user was not found.
     if (res.status !== 404) {
@@ -369,7 +379,7 @@ const createServiceDeskRequest = async (
 const submitTicket = async (form_submission_data, event) => {
   // Fetch form_data.json based on form_id.
   var formData = fetchFormData(form_submission_data.form_id.toString());
-  console.log("Form Data: ", formData);
+  console.log("submitTicket: form data: ", formData);
   // Login to vault and then submit the ticket via:
   // 1. Checking if the email provided is already a customer on Service Desk
   // 1.1 If the user is not a customer, create the customer
@@ -377,14 +387,17 @@ const submitTicket = async (form_submission_data, event) => {
   // 3. Submit a new request based on the request type provided.
   const authResult = await vaultLogin();
   try {
-    console.log(authResult);
+    console.log("Vault login auth result:", authResult);
     vault.token = authResult.auth.client_token;
     var secret = "";
+    console.log(`Trying to read from ${process.env.VAULT_SECRET_PATH}`);
     var result = await vault.read(process.env.VAULT_SECRET_PATH);
     secret = result.data.pw;
+    console.log("Just confirming we got the secret from Vault ...");
     var user = await getServiceDeskUserAccount(form_submission_data, secret);
     // Add user to the service desk project
     await addUserToServiceDeskProject(formData, user, secret);
+    console.log("And we've added the user to the project");
     // Create the request ticket
     var res = await createServiceDeskRequest(
       form_submission_data,
@@ -505,15 +518,16 @@ module.exports.verify = async (event, context, callback) => {
     const verifyRes = await verifySubmission(event.queryStringParameters.token);
     console.log(verifyRes);
     if (verifyRes.hasOwnProperty("Item")) {
-      console.log("valid");
+      console.log("Payload from verifySubmission is valid");
+      console.log(`token=${event.queryStringParameters.token}`);
       const res = await updateSubmission(
         event.queryStringParameters.token,
         "verified",
         "VERIFIED",
         process.env.ENTRIES_TABLE
       );
+      console.log("Result from updateSubmission:");
       console.log(res);
-      console.log("Setting the status of submission to verified.");
       // Parse the response
       const formDataFromDB = JSON.parse(verifyRes.Item.payload);
       console.log("Form Data from DB: ", formDataFromDB);
