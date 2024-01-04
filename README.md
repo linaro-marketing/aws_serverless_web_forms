@@ -30,15 +30,15 @@ You should supply an array of objects containing `projectName` and `requestType`
 
 You'll also need to make sure the API domain is correct in `setup_form_data.js`. Once setup, you can then run `sls collectFormData`.
 
-This will execute `setup_form_data.js` and require your Service Desk login credentials to access the REST API for Service Desk. This script will then output `form_data.json` and some example HTML forms in `html_examples/`. `form_data.json` is used by the lambda function to verify and match incoming requests.
+This will execute `setup_form_data.js` and require your Service Desk login credentials to access the REST API for Service Desk (i.e. email address and API token). This script will then output `form_data.json` and some example HTML forms in `html_examples/`. `form_data.json` is used by the lambda function to verify and match incoming requests.
 
 If the script is failing to execute, please ensure that you can sign in to your Service Desk with the email/password you are using to collec the form data. You may be being blocked by a Captcha security check.
 
 ### Deploying
 
-To deploy the staging environment stack run `aws2-wrap --profile <YOUR_AWS_PROFILE> --exec "sls deploy -v --stage dev"`.
+To deploy the staging environment stack run `aws2-wrap --profile <YOUR_AWS_PROFILE> --exec "sls deploy --verbose --stage dev"`.
 
-To deploy the production environment stack run `aws2-wrap --profile <YOUR_AWS_PROFILE> --exec "sls deploy -v --stage prod"`.
+To deploy the production environment stack run `aws2-wrap --profile <YOUR_AWS_PROFILE> --exec "sls deploy --verbose --stage prod"`.
 
 #### IAM Permissions
 

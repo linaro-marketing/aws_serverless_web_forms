@@ -14,5 +14,9 @@
   {
     "projectName": "Linaro Contact",
     "requestType": "Membership Inquiry"
+  },
+  {
+    "projectName": "Linaro Contact",
+    "requestType": "Bigtop Request"
   }
 ]
