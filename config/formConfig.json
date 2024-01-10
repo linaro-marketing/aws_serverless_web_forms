@@ -18,5 +18,9 @@
   {
     "projectName": "Linaro Contact",
     "requestType": "Bigtop Request"
+  },
+  {
+    "projectName": "Linaro Contact",
+    "requestType": "LTS Request"
   }
 ]
