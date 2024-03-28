@@ -206,6 +206,7 @@ const serviceDeskRequest = (
   if (experimental) {
     requestHeaders["headers"]["X-ExperimentalApi"] = true;
   }
+  console.log(`https://${process.env.SERVICE_DESK_DOMAIN}${endpoint}`);
   console.log(requestHeaders);
   return fetch(
     `https://${process.env.SERVICE_DESK_DOMAIN}${endpoint}`,
@@ -395,6 +396,8 @@ const submitTicket = async (form_submission_data, event) => {
     secret = result.data.pw;
     console.log("Just confirming we got the secret from Vault ...");
     var user = await getServiceDeskUserAccount(form_submission_data, secret);
+    // Add user to a group to ensure they have access as a customer
+    await addUserToCustomerGroup(user, secret);
     // Add user to the service desk project
     await addUserToServiceDeskProject(formData, user, secret);
     console.log("And we've added the user to the project");
@@ -410,6 +413,26 @@ const submitTicket = async (form_submission_data, event) => {
     await vault.tokenRevokeSelf();
   }
 };
+
+const addUserToCustomerGroup = async (user, secret) => {
+  console.log("Adding customer account to the jira-servicemanagement-customers-linaro-servicedesk group");
+  console.log(user[0]);
+  var res = await serviceDeskRequest(
+    `/rest/api/3/group/user?groupId=1cd838b7-08ea-454a-862d-5cdcf01c724b`,
+    "POST",
+    secret,
+    {
+      accountIds: [user[0].accountId],
+    },
+    true
+  );
+  if (!res.ok) {
+    throw new Error(
+      `HTTP status ${res.status}: FailedToAddUserToCustomerGroup}`
+    );
+  }
+  console.log(await res.text());
+}
 
 /**
  * Take the form data and attempt to collect required form verification
@@ -531,6 +554,7 @@ module.exports.verify = async (event, context, callback) => {
       // Parse the response
       const formDataFromDB = JSON.parse(verifyRes.Item.payload);
       console.log("Form Data from DB: ", formDataFromDB);
+      delete formDataFromDB.customfield_checkbox
       // Submit the ticket with data from dynamoDB
       await submitTicket(formDataFromDB, event);
       // Format a redirection url
