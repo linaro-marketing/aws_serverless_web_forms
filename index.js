@@ -270,7 +270,7 @@ const getServiceDeskUserAccount = async (form_submission_data, secret) => {
     }
     return await createCustomerRes.json();
   } else {
-    return jsonRes;
+    return jsonRes[0];
   }
 };
 /**
@@ -285,7 +285,7 @@ const addUserToServiceDeskProject = async (formData, user, secret) => {
     `Adding customer account to the ${formData.projectName} project...`
   );
   console.log("Incoming user block:");
-  console.log(user[0]);
+  console.log(user);
   // Make the request to add the user to the project based on the form_id provided in the form submission.
   var res = await serviceDeskRequest(
     `/rest/servicedeskapi/servicedesk/${formData.projectId}/customer`,
@@ -397,7 +397,7 @@ const submitTicket = async (form_submission_data, event) => {
     console.log("Just confirming we got the secret from Vault ...");
     var user = await getServiceDeskUserAccount(form_submission_data, secret);
     // Add user to a group to ensure they have access as a customer
-    await addUserToCustomerGroup(user, secret);
+    // await addUserToCustomerGroup(user, secret);
     // Add user to the service desk project
     await addUserToServiceDeskProject(formData, user, secret);
     console.log("And we've added the user to the project");
