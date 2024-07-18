@@ -10,8 +10,19 @@ To get started with this project you'll need:
 
 - A static website
 - AWS Account
-- Latest version of Serverless Framework CLI installed
+- Latest version of Serverless Framework CLI installed (`npm install -g serverless`)
 - NodeJS
+- a `.env` file with values for:
+
+```
+SERVICE_DESK_DOMAIN=
+VERIFICATION_FROM_EMAIL_ADDR=
+VAULT_PORT=
+VAULT_DOMAIN=
+SERVICE_DESK_USERNAME=
+VAULT_SECRET_PATH=
+VAULT_IAM_ROLE=
+```
 
 ### Pre-processing (if using Atlassian Service Desk)
 
@@ -28,11 +39,9 @@ You should supply an array of objects containing `projectName` and `requestType`
 ]
 ```
 
-You'll also need to make sure the API domain is correct in `setup_form_data.js`. Once setup, you can then run `sls collectFormData`.
+You'll also need to make sure the API domain is correct in `setup_form_data.js`. Once setup, you can then run `sls collectFormData`. You will be prompted for an email address (use the support bot one) and a password (use the API token).
 
 This will execute `setup_form_data.js` and require your Service Desk login credentials to access the REST API for Service Desk (i.e. email address and API token). This script will then output `form_data.json` and some example HTML forms in `html_examples/`. `form_data.json` is used by the lambda function to verify and match incoming requests.
-
-If the script is failing to execute, please ensure that you can sign in to your Service Desk with the email/password you are using to collec the form data. You may be being blocked by a Captcha security check.
 
 ### Deploying
 
@@ -43,3 +52,16 @@ To deploy the production environment stack run `aws2-wrap --profile <YOUR_AWS_PR
 #### IAM Permissions
 
 You may need to make sure your account has the correct permissions to deploy the neccessary resources. I've generated some base IAM policies with `yeoman`/`serverless-policy` (examples of these are in `config/`).
+
+## SES Templates
+The stored SES templates can be checked with:
+
+```
+aws ses list-templates
+```
+
+There will be one set for production and one set for development.
+
+Each template can be retrieved with `aws ses get-template --template-name <name> > <name>.json` and then updated on SES with `aws ses update-template --cli-input-json file://<name>.json`.
+
+This repository holds the HTML and plain text templates, with the HTML being minified as well. The latter needs to go through a search/replace, so that `"` is replaced with `\"` before inserting into the SES template.

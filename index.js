@@ -292,7 +292,7 @@ const addUserToServiceDeskProject = async (formData, user, secret) => {
     "POST",
     secret,
     {
-      accountIds: [user[0].accountId],
+      accountIds: [user.accountId],
     },
     true
   );
