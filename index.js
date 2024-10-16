@@ -1,16 +1,14 @@
 "use strict";
 
 const fs = require("fs");
-const uuid = require("uuid");
 const AWS = require("aws-sdk");
-// const fetch = require("node-fetch");
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+const fetch = (...args) =>
+  import("node-fetch").then(({ default: fetch }) => fetch(...args));
 const nv = require("node-vault");
 var aws4 = require("aws4");
 AWS.config.setPromisesDependency(require("bluebird"));
-const dynamoDb = new AWS.DynamoDB.DocumentClient();
 const ses = new AWS.SES({
-  region: "us-east-1", // Set the region in which SES is configured
+  region: "us-east-1",
 });
 
 const vault = nv({
@@ -22,16 +20,15 @@ vault.generateFunction("awsIamLogin", {
   path: "/auth/aws/login",
 });
 
-//NOTE: I'm using async/await
 const vaultLogin = async () => {
-  // check if we are already logged in and have a token
   const postBody = await getSignedAWSLoginConfig(
     process.env.VAULT_IAM_ROLE,
     process.env.VAULT_DOMAIN
-  ); //role and request ID moved inside
+  );
   return await vault.awsIamLogin(postBody);
 };
-function getSignedAWSLoginConfig(role, id) {
+
+const getSignedAWSLoginConfig = (role, id) => {
   var body = "Action=GetCallerIdentity&Version=2011-06-15";
   var url = "https://sts.amazonaws.com/";
   var signedRequest;
@@ -44,144 +41,74 @@ function getSignedAWSLoginConfig(role, id) {
   } else {
     signedRequest = aws4.sign({ service: "sts", body: body });
   }
+
   var headers = signedRequest.headers;
-  var header;
-  for (header in headers) {
-    if (typeof headers[header] === "number") {
-      headers[header] = headers[header].toString();
-    }
-    headers[header] = [headers[header]];
+  for (let header in headers) {
+    headers[header] = [headers[header].toString()];
   }
-  var request_url = new Buffer.from(url, "utf8");
-  var iam_request_body = new Buffer.from(body, "utf8");
-  var iam_request_headers = new Buffer.from(JSON.stringify(headers), "utf8");
+
   return {
     role: role,
     iam_http_request_method: "POST",
-    iam_request_url: request_url.toString("base64"),
-    iam_request_body: iam_request_body.toString("base64"),
-    iam_request_headers: iam_request_headers.toString("base64"),
+    iam_request_url: Buffer.from(url, "utf8").toString("base64"),
+    iam_request_body: Buffer.from(body, "utf8").toString("base64"),
+    iam_request_headers: Buffer.from(JSON.stringify(headers), "utf8").toString(
+      "base64"
+    ),
   };
-}
+};
+
 const sendVerificationEmail = (inputs, templateName, sendTo, formId, event) => {
-  let confirmationEmailLink = `https://${event.requestContext.domainName}/${event.requestContext.stage}/formVerify?token=${formId}`;
   let templateData = {
-    confirmation_link: confirmationEmailLink,
-    name: inputs["name"],
+    name: inputs["customfield_13155"],
+    description: inputs["description"] ?? inputs["customfield_13365"],
   };
-  // Template Params
+
   const params = {
     Template: templateName,
     Destination: {
       ToAddresses: [sendTo],
     },
-    Source: process.env.VERIFICATION_FROM_EMAIL_ADDR, // use the SES domain or email verified in your account
+    Source: process.env.VERIFICATION_FROM_EMAIL_ADDR,
     TemplateData: JSON.stringify(templateData || {}),
   };
-  // Send the email
+
   ses.sendTemplatedEmail(params, (err, data) => {
     if (err) {
-      console.log(err);
+      console.log("Error whilst sending email:", err);
       return false;
     } else {
+      console.log("Confirmation Email Sent");
       return true;
     }
   });
 };
-/**
- * Submit Entry to Dynamo DB table.
- * @param {Object} formEntry - formEntryStruct() object.
- * @returns {Promise} - Returns a dynamoDb promise.
- */
-const submitFormEntry = (formEntry) => {
-  console.log("Adding form formEntry to dynamo db...");
-  const formEntryInfo = {
-    TableName: process.env.ENTRIES_TABLE,
-    Item: formEntry,
-  };
-  return dynamoDb
-    .put(formEntryInfo)
-    .promise()
-    .then((res) => formEntry);
-};
-/**
- * Creates an Object with neccessary dynamoDb attributes.
- * @param {string} email - The email address of the form submitter
- * @param {Object} requestBody - The validated requestBody object
- * @returns {Object} - Returns an object ready to be added to dynamoDb
- */
-const formEntryStruct = (origin, email, requestBody) => {
-  const timestamp = new Date().getTime();
-  return {
-    id: uuid.v1(),
-    email: email,
-    website: origin,
-    payload: JSON.stringify(requestBody),
-    submittedAt: timestamp,
-  };
+
+const validateForm = (formData) => {
+  let form_id = formData["form_id"];
+  let validFormData = fetchFormData(form_id);
+  if (!validFormData) {
+    console.log("Couldn't fetch form_data for the form_id provided.");
+    return false;
+  } else {
+    const validRequiredRequestFields =
+      validFormData.fields.requestTypeFields.filter((entry) => {
+        return entry.required === true;
+      });
+    for (let i = 0; i < validRequiredRequestFields.length; i++) {
+      if (!formData.hasOwnProperty(validRequiredRequestFields[i].fieldId)) {
+        console.log("Missing a required field.");
+        return false;
+      }
+    }
+    if (!formData.hasOwnProperty("email")) {
+      console.log("Missing the email field.");
+      return false;
+    }
+  }
+  return true;
 };
 
-/**
- * Updates a table entry value.
- * @param {*} uniqueId The unique `id` value of the table entry
- * @param {*} attribute The attribute to update
- * @param {*} value The value to update it with.
- * @param {*} table The name of the DynamoDB table.
- * @returns {Promise} A promise of updating the table entry.
- */
-const updateSubmission = (uniqueId, attribute, value, table) => {
-  var params = {
-    TableName: table,
-    Key: { id: uniqueId },
-    UpdateExpression: "set #a = :x",
-    ConditionExpression: "attribute_not_exists (verified)",
-    ExpressionAttributeNames: { "#a": attribute },
-    ExpressionAttributeValues: {
-      ":x": value,
-    },
-  };
-  return dynamoDb.update(params).promise();
-};
-// Verify the submission by finding a dynamoDb entry
-// with an id equal to that of the GET token param.
-const verifySubmission = async (token) => {
-  // Query params with "token"
-  let params = {
-    TableName: process.env.ENTRIES_TABLE,
-    Key: {
-      id: token,
-    },
-  };
-  console.log(params);
-  // Get the current item based on id.
-  return dynamoDb.get(params).promise();
-};
-// Delete the submission from dynamo DB once the request has been submitted
-// successfully.
-const deleteSubmission = (event) => {
-  console.log("Deleting submission entry...");
-  if (!event.queryStringParameters.token) return false;
-  let token = event.queryStringParameters.token;
-  // Query params with "token"
-  let params = {
-    TableName: process.env.ENTRIES_TABLE,
-    Key: {
-      id: token,
-    },
-  };
-  console.log(params);
-  return dynamoDb.delete(params).promise();
-};
-/**
- * Service Desk Request helper function which
- * returns a node-fetch promise.
- * @param {string} endpoint - The Service Desk Rest API endpoint e.g. /rest/api/2/user
- * @param {string} method - The request method e.g POST / GET
- * @param {string} password - The Service Desk account password. Username is provided via process.env.SERVICE_DESK_USERNAME
- * @param {Object} payload - An optional payload for the body of the request.
- * @param {Object} experimental - A boolean value to determine wheter to include the X-ExperimentalApi header.
- * @returns {Promise} - Returns a node-fetch fetch() promise
- */
 const serviceDeskRequest = (
   endpoint,
   method,
@@ -189,7 +116,7 @@ const serviceDeskRequest = (
   payload = false,
   experimental = false
 ) => {
-  var requestHeaders = {
+  const requestHeaders = {
     method: method,
     headers: {
       Authorization:
@@ -206,108 +133,100 @@ const serviceDeskRequest = (
   if (experimental) {
     requestHeaders["headers"]["X-ExperimentalApi"] = true;
   }
-  console.log(`https://${process.env.SERVICE_DESK_DOMAIN}${endpoint}`);
-  console.log(requestHeaders);
   return fetch(
     `https://${process.env.SERVICE_DESK_DOMAIN}${endpoint}`,
     requestHeaders
   );
 };
-/**
- * Returns the Service Desk user account for the given email
- * and creates a new account if one does not already exist.
- * @param {Object} form_submission_data - The form submission data object which must contain the email/name attributes
- * @param {string} secret - The Service Desk account password. Username is provided via process.env.SERVICE_DESK_USERNAME
- * @returns {Promise} - Returns a node-fetch fetch() promise of the SD user data
- */
+
 const getServiceDeskUserAccount = async (form_submission_data, secret) => {
-  console.log("Fetching user SD user account...");
-  var sdResponse = await serviceDeskRequest(
+  console.log("Fetching SD user account...: ");
+  const sdResponse = await serviceDeskRequest(
     `/rest/api/3/user/search?query=${form_submission_data.email}`,
     "GET",
     secret
   );
+
   if (!sdResponse.ok) {
-    // Check the response is not 404 since this represents the
-    // user was not found.
     if (sdResponse.status !== 404) {
-      console.log("sdResponse.status=", sdResponse.status);
       throw new Error(
         `HTTP status ${sdResponse.status}: FailedToAddUserToServiceDeskProject}`
       );
     }
   }
-  var jsonRes = await sdResponse.json();
-  console.log(`Result of searching for ${form_submission_data.email}:`, jsonRes);
-  if (jsonRes.hasOwnProperty("errorMessages") || jsonRes.length == 0) {
-    // User not found so create an account
+
+  const jsonRes = await sdResponse.json();
+  if (jsonRes.length === 0) {
     console.log("User account not found, creating customer account...");
-    var full_name = form_submission_data.email;
-    if (
-      Object.prototype.hasOwnProperty.call(
-        form_submission_data,
-        "customfield_13155"
-      ) &&
-      Object.prototype.hasOwnProperty.call(
-        form_submission_data,
-        "customfield_13156"
-      )
-    ) {
-      full_name = `${form_submission_data.customfield_13155} ${form_submission_data.customfield_13156}`;
-    }
-    var createCustomerRes = await serviceDeskRequest(
+    const full_name = form_submission_data.email;
+    const createCustomerRes = await serviceDeskRequest(
       `/rest/servicedeskapi/customer`,
       "POST",
       secret,
       { email: form_submission_data.email, displayName: full_name },
       true
     );
+
     if (!createCustomerRes.ok) {
-      console.log("Create customer failed with ", await createCustomerRes.text());
       throw new Error(
-        `HTTP status ${createCustomerRes.status}: FailedToCreateUserAsNewCustomer}`
+        `HTTP status ${createCustomerRes.status}: FailedToCreateUserAsNewCustomer`
       );
     }
+
     return await createCustomerRes.json();
   } else {
     return jsonRes[0];
   }
 };
-/**
- * Adds a user to the specified Service Desk Project
- * @param {Object} user - The user data object which must contain an emailAddress
- * @param {string} secret - The Service Desk account password. Username is provided via process.env.SERVICE_DESK_USERNAME
- * @returns {Promise} - Returns a node-fetch fetch() promise of the SD user data
- */
+
 const addUserToServiceDeskProject = async (formData, user, secret) => {
-  // Add the customer to the service desk project for the current form submitted
-  console.log(
-    `Adding customer account to the ${formData.projectName} project...`
-  );
-  console.log("Incoming user block:");
-  console.log(user);
-  // Make the request to add the user to the project based on the form_id provided in the form submission.
-  var res = await serviceDeskRequest(
+  const res = await serviceDeskRequest(
     `/rest/servicedeskapi/servicedesk/${formData.projectId}/customer`,
     "POST",
     secret,
-    {
-      accountIds: [user.accountId],
-    },
+    { accountIds: [user.accountId] },
     true
   );
+
   if (!res.ok) {
     throw new Error(
-      `HTTP status ${res.status}: FailedToAddUserToServiceDeskProject}`
+      `HTTP status ${res.status}: FailedToAddUserToServiceDeskProject`
     );
   }
-  console.log(await res.text());
 };
-/**
- * Adds a user to the specified Service Desk Project
- * @param {String} form_id - The form_id of the relevant request. See form_data.json
- * @returns {Object} - Returns the relevant form data.
- */
+
+const createServiceDeskRequest = async (
+  form_submission_data,
+  formData,
+  secret
+) => {
+  let preparedSubmissionData = { ...form_submission_data };
+  let requestEmail = preparedSubmissionData["email"];
+  delete preparedSubmissionData["email"];
+  delete preparedSubmissionData["form_id"];
+  const payload = {
+    serviceDeskId: formData.projectId,
+    requestTypeId: formData.requestTypeId,
+    requestFieldValues: preparedSubmissionData,
+    raiseOnBehalfOf: requestEmail,
+  };
+
+  const res = await serviceDeskRequest(
+    `/rest/servicedeskapi/request`,
+    "POST",
+    secret,
+    payload
+  );
+
+  if (!res.ok) {
+    console.log("!res.ok", res);
+    throw new Error(
+      `HTTP status ${res.status}: FailedToCreateServiceDeskRequest`
+    );
+  }
+
+  return await res.json();
+};
 const fetchFormData = (form_id) => {
   let rawFormData = fs.readFileSync("form_data.json");
   let tempformData = JSON.parse(rawFormData);
@@ -321,301 +240,40 @@ const fetchFormData = (form_id) => {
   });
   return foundForm ? formData : false;
 };
-/**
- * Creates the Service Desk Request
- * @param {Object} form_submission_data - The details of the form submission from dynamoDb
- * @returns {Object} - Returns the relevant form data.
- */
-const createServiceDeskRequest = async (
-  form_submission_data,
-  formData,
-  secret
-) => {
-  // https://docs.atlassian.com/jira-servicedesk/REST/3.6.2/#servicedeskapi/request-createCustomerRequest
-  let preparedSubmissionData = form_submission_data;
-  let requestEmail = preparedSubmissionData["email"];
-  delete preparedSubmissionData["email"];
-  delete preparedSubmissionData["form_id"];
-  // Prepare any checkbox values for ticket submission.
-  // https://docs.atlassian.com/jira-servicedesk/REST/3.6.2/#fieldformats
-  for (const key in preparedSubmissionData) {
-    if (Array.isArray(preparedSubmissionData[key])) {
-      let mappedVals = [];
-      for (let i = 0; i < preparedSubmissionData[key].length; i++) {
-        mappedVals.push({ id: preparedSubmissionData[key][i] });
-      }
-      preparedSubmissionData[key] = mappedVals;
-    }
-  }
-  let payload = {
-    serviceDeskId: formData.projectId,
-    requestTypeId: formData.requestTypeId,
-    requestFieldValues: preparedSubmissionData,
-    raiseOnBehalfOf: requestEmail,
-  };
-  console.log("Submitted payload: ", payload);
-  var res = await serviceDeskRequest(
-    `/rest/servicedeskapi/request`,
-    "POST",
-    secret,
-    payload
-  );
-  if (!res.ok) {
-    console.log("Creating service desk request: ", await res.text());
-    // Check the response is not 404 since this represents the
-    // user was not found.
-    if (res.status !== 404) {
-      throw new Error(
-        `HTTP status ${res.status}: FailedToCreateServiceDeskRequest`
-      );
-    }
-  }
-  return await res.json();
-};
-/**
- * Main submit ticket logic
- * @param {Object} data - The details of the form submission from dynamoDb
- * @returns {Object} - Returns the relevant form data.
- */
 const submitTicket = async (form_submission_data, event) => {
-  // Fetch form_data.json based on form_id.
-  var formData = fetchFormData(form_submission_data.form_id.toString());
-  console.log("submitTicket: form data: ", formData);
-  // Login to vault and then submit the ticket via:
-  // 1. Checking if the email provided is already a customer on Service Desk
-  // 1.1 If the user is not a customer, create the customer
-  // 2. Add the customer account to the Service Desk project based on the form_id
-  // 3. Submit a new request based on the request type provided.
+  console.log("Submitting Ticket...", form_submission_data);
+  const formData = fetchFormData(form_submission_data.form_id.toString());
+  console.log("Form Data: ", formData);
   const authResult = await vaultLogin();
   try {
-    console.log("Vault login auth result:", authResult);
     vault.token = authResult.auth.client_token;
-    var secret = "";
-    console.log(`Trying to read from ${process.env.VAULT_SECRET_PATH}`);
-    var result = await vault.read(process.env.VAULT_SECRET_PATH);
-    secret = result.data.pw;
-    console.log("Just confirming we got the secret from Vault ...");
-    var user = await getServiceDeskUserAccount(form_submission_data, secret);
-    // Add user to a group to ensure they have access as a customer
-    // await addUserToCustomerGroup(user, secret);
-    // Add user to the service desk project
+    const result = await vault.read(process.env.VAULT_SECRET_PATH);
+    console.log("Auth successful...");
+    const secret = result.data.pw;
+    const user = await getServiceDeskUserAccount(form_submission_data, secret);
     await addUserToServiceDeskProject(formData, user, secret);
-    console.log("And we've added the user to the project");
-    // Create the request ticket
-    var res = await createServiceDeskRequest(
-      form_submission_data,
-      formData,
-      secret
-    );
-    console.log(res);
-    // await deleteSubmission(event);
+    console.log("User added to Service Desk Project");
+    await createServiceDeskRequest(form_submission_data, formData, secret);
   } finally {
     await vault.tokenRevokeSelf();
   }
 };
 
-const addUserToCustomerGroup = async (user, secret) => {
-  console.log("Adding customer account to the jira-servicemanagement-customers-linaro-servicedesk group");
-  console.log(user[0]);
-  var res = await serviceDeskRequest(
-    `/rest/api/3/group/user?groupId=1cd838b7-08ea-454a-862d-5cdcf01c724b`,
-    "POST",
-    secret,
-    {
-      accountIds: [user[0].accountId],
-    },
-    true
-  );
-  if (!res.ok) {
-    throw new Error(
-      `HTTP status ${res.status}: FailedToAddUserToCustomerGroup}`
-    );
-  }
-  console.log(await res.text());
-}
-
-/**
- * Take the form data and attempt to collect required form verification
- * email inputs. E.g a name.
- * @param {Object} formData - The formSubmission data object.
- * @returns {Object} - Returns an object containing neccessary inputs for
- *  verification email
- */
-const getVerificationEmailTemplateInputs = (formData) => {
-  // Get the submissions form_id.
-  let form_id = formData["form_id"];
-  // Let's fetch the form data from form_data.json
-  let validFormData = fetchFormData(form_id);
-  var firstName = "";
-  var familyName = "";
-  var fullName = "";
-  for (let i = 0; i < validFormData.fields.requestTypeFields.length; i++) {
-    // Field name contains "Name"
-    if (
-      formData.hasOwnProperty(
-        validFormData.fields.requestTypeFields[i].name.indexOf("Name") > -1
-      )
-    ) {
-      var fieldName = validFormData.fields.requestTypeFields[i].name.trim();
-      if (fieldName === "Family Name") {
-        familyName = fieldName;
-      } else if (fieldName === "First Name") {
-        firstName = fieldName;
-      }
-    }
-  }
-  if (firstName !== "" && familyName !== "") {
-    fullName = `${firstName} ${familyName}`;
-  }
-  return { name: firstName, familyName: familyName, fullName: fullName };
-};
-//
-/**
- * Validate the form agains the local form_data.json file.
- * @param {Object} formData - The formSubmission data object.
- * @returns {Boolean} - If the form data is valid return true else
- * return false.
- */
-const validateForm = (formData) => {
-  // Get the submissions form_id.
-  let form_id = formData["form_id"];
-  // Let's fetch the form data from form_data.json
-  let validFormData = fetchFormData(form_id);
-  // Check that the form data is returned.
-  if (!validFormData) {
-    console.log("Couldn't fetch form_data for the form_id provided.");
-    return false;
-  } else {
-    // Form id exists - let's check the other values
-    const validRequiredRequestFields =
-      validFormData.fields.requestTypeFields.filter((entry) => {
-        return entry.required === true;
-      });
-    // Check the form submission contains the required fields.
-    for (let i = 0; i < validRequiredRequestFields.length; i++) {
-      if (!formData.hasOwnProperty(validRequiredRequestFields[i].fieldId)) {
-        console.log("Missing a required field.");
-        return false;
-      }
-    }
-    // Check the form submission has an email property.
-    if (!formData.hasOwnProperty("email")) {
-      console.log("Missing the email field.");
-      return false;
-    }
-  }
-  return true;
-};
-/**
- * Publishes a message to our form service sns topic.
- * @param {string} message - The message to publish to sns.
- * @returns {Promise} - Returns a promise.
- */
-const publishSNSMessage = (message) => {
-  // Setup params
-  var params = {
-    Message: message,
-    TopicArn: process.env.SNS_TOPIC_ARN,
-  };
-  return new AWS.SNS({ apiVersion: "2010-03-31" }).publish(params).promise();
-};
-/**
- * Function handler for the verification of a submission. Runs when a form confirmation
- * link is clicked.
- * @param {*} event
- * @param {*} context
- * @param {*} callback
- */
-module.exports.verify = async (event, context, callback) => {
-  try {
-    console.log(event);
-    console.log("Verifying the submission...");
-    if (!event.queryStringParameters.token) {
-      callback(null, {
-        statusCode: 500,
-        body: JSON.stringify({
-          message: "Invalid token provided.",
-        }),
-      });
-    }
-    const verifyRes = await verifySubmission(event.queryStringParameters.token);
-    console.log(verifyRes);
-    if (verifyRes.hasOwnProperty("Item")) {
-      console.log("Payload from verifySubmission is valid");
-      console.log(`token=${event.queryStringParameters.token}`);
-      const res = await updateSubmission(
-        event.queryStringParameters.token,
-        "verified",
-        "VERIFIED",
-        process.env.ENTRIES_TABLE
-      );
-      console.log("Result from updateSubmission:");
-      console.log(res);
-      // Parse the response
-      const formDataFromDB = JSON.parse(verifyRes.Item.payload);
-      console.log("Form Data from DB: ", formDataFromDB);
-      delete formDataFromDB.customfield_checkbox
-      // Submit the ticket with data from dynamoDB
-      await submitTicket(formDataFromDB, event);
-      // Format a redirection url
-      console.log("Email: ", verifyRes.Item.email);
-      var redirection_url = `${verifyRes.Item.website}/thank-you/?email=${verifyRes.Item.email}`;
-      callback(null, {
-        statusCode: 301,
-        headers: {
-          Location: redirection_url,
-        },
-      });
-    } else {
-      callback(null, {
-        statusCode: 301,
-        headers: {
-          Location: "https://www.linaro.org/thank-you/",
-        },
-      });
-    }
-  } catch (err) {
-    console.log(err.message);
-    // Catch the failure of the conditional update request.
-    if (err.message === "The conditional request failed") {
-      callback(null, {
-        statusCode: 301,
-        headers: {
-          Location: "https://www.linaro.org/thank-you/",
-        },
-      });
-    }
-    await publishSNSMessage(err.message);
-    callback(null, {
-      statusCode: 500,
-      body: JSON.stringify({
-        message: err,
-      }),
-    });
-  }
-};
 module.exports.submit = async (event, context, callback) => {
   try {
-    console.log(event);
-    // Get the POST request body
-    const requestBody = JSON.parse(event.body);
-    // Some type validation
-    var formValid = validateForm(requestBody);
-    // Also check that the requestBody has a length > than 0
+    const form_submission_data = JSON.parse(event.body);
+    var formValid = validateForm(form_submission_data);
+
     if (!formValid) {
       console.error("Validation Failed");
       throw new Error("FormValidationFailed");
     } else {
-      var inputs = getVerificationEmailTemplateInputs(requestBody);
-      var formEntry = await submitFormEntry(
-        formEntryStruct(event.headers.origin, requestBody["email"], requestBody)
-      );
-      // Send the template email
+      await submitTicket(form_submission_data, event);
       await sendVerificationEmail(
-        { name: inputs["fullName"] },
+        form_submission_data,
         "confirmation_dev",
-        requestBody["email"],
-        formEntry.id,
+        form_submission_data.email,
+        form_submission_data.form_id,
         event
       );
       callback(null, {
@@ -625,23 +283,23 @@ module.exports.submit = async (event, context, callback) => {
           "Access-Control-Allow-Credentials": true,
         },
         body: JSON.stringify({
-          message: `Sucessfully submitted form with email ${requestBody["email"]}`,
-          formId: formEntry.id,
+          message: `Sucessfully submitted form with email ${form_submission_data.email}`,
+          formId: form_submission_data.form_id,
         }),
       });
     }
-  } catch (err) {
-    console.log(err.message);
-    await publishSNSMessage(err.message);
-    callback(null, {
+  } catch (error) {
+    console.error("Error during submission:", error);
+    return {
       statusCode: 500,
       headers: {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Credentials": true,
       },
       body: JSON.stringify({
-        message: `${err}`,
+        message: "An error occurred while processing the submission.",
+        error: error.message,
       }),
-    });
+    };
   }
 };

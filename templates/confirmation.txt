@@ -1,4 +1,4 @@
 Hi {{name}},
-
-Thank you for submitting your request. Please confirm your submission by clicking the following confirmation link:
-<a href="{{confirmation_link}}">Confirm your Request</a>
+.txt
+Thank you for submitting your request. Please see your submission below: 
+{{description}}
