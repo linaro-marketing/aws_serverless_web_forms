@@ -26,12 +26,12 @@ provider:
   iamRoleStatements:
     - Effect: Allow
       Action:
-        - dynamodb:Query
-        - dynamodb:Scan
-        - dynamodb:GetItem
-        - dynamodb:PutItem
-        - dynamodb:DeleteItem
-        - dynamodb:UpdateItem
+        # - dynamodb:Query
+        # - dynamodb:Scan
+        # - dynamodb:GetItem
+        # - dynamodb:PutItem
+        # - dynamodb:DeleteItem
+        # - dynamodb:UpdateItem
         - ses:SendTemplatedEmail
         - sts:AssumeRole
         - sns:Publish
@@ -71,22 +71,22 @@ resources:
       Type: "AWS::SNS::Topic"
       Properties:
         TopicName: ServerlessFormsTopic-${opt:stage, self:provider.stage}
-    FormEntriesDynamoDbTable:
-      Type: "AWS::DynamoDB::Table"
-      DeletionPolicy: Retain
-      Properties:
-        AttributeDefinitions:
-          - AttributeName: "id"
-            AttributeType: "S"
-        KeySchema:
-          - AttributeName: "id"
-            KeyType: "HASH"
-        ProvisionedThroughput:
-          ReadCapacityUnits: 1
-          WriteCapacityUnits: 1
-        StreamSpecification:
-          StreamViewType: "NEW_AND_OLD_IMAGES"
-        TableName: ${self:provider.environment.ENTRIES_TABLE}
+    # FormEntriesDynamoDbTable:
+    #   Type: "AWS::DynamoDB::Table"
+    #   DeletionPolicy: Retain
+    #   Properties:
+    #     AttributeDefinitions:
+    #       - AttributeName: "id"
+    #         AttributeType: "S"
+    #     KeySchema:
+    #       - AttributeName: "id"
+    #         KeyType: "HASH"
+    #     ProvisionedThroughput:
+    #       ReadCapacityUnits: 1
+    #       WriteCapacityUnits: 1
+    #     StreamSpecification:
+    #       StreamViewType: "NEW_AND_OLD_IMAGES"
+    #     TableName: ${self:provider.environment.ENTRIES_TABLE}
 package:
   exclude:
     - ./form_data.json
