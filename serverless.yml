@@ -26,12 +26,12 @@ provider:
   iamRoleStatements:
     - Effect: Allow
       Action:
-        - dynamodb:Query
-        - dynamodb:Scan
-        - dynamodb:GetItem
-        - dynamodb:PutItem
-        - dynamodb:DeleteItem
-        - dynamodb:UpdateItem
+        # - dynamodb:Query
+        # - dynamodb:Scan
+        # - dynamodb:GetItem
+        # - dynamodb:PutItem
+        # - dynamodb:DeleteItem
+        # - dynamodb:UpdateItem
         - ses:SendTemplatedEmail
         - sts:AssumeRole
         - sns:Publish
@@ -43,7 +43,13 @@ functions:
     memorySize: 128
     environment:
       VERIFICATION_FROM_EMAIL_ADDR: ${env:VERIFICATION_FROM_EMAIL_ADDR}
-    description: Save the form entry details to DynamoDB and send the verification email.
+      VAULT_DOMAIN: ${env:VAULT_DOMAIN}
+      VAULT_PORT: ${env:VAULT_PORT}
+      VAULT_IAM_ROLE: ${env:VAULT_IAM_ROLE}
+      VAULT_SECRET_PATH: ${env:VAULT_SECRET_PATH}
+      SERVICE_DESK_USERNAME: ${env:SERVICE_DESK_USERNAME}
+      SERVICE_DESK_DOMAIN: ${env:SERVICE_DESK_DOMAIN}
+    description: Create ticket and send the confirmation email.
     events:
       - http:
           path: formSubmit
@@ -59,45 +65,28 @@ functions:
               - X-Amz-Security-Token
               - X-Amz-User-Agent
             allowCredentials: true
-  formVerification:
-    handler: index.verify
-    memorySize: 128
-    environment:
-      VAULT_DOMAIN: ${env:VAULT_DOMAIN}
-      VAULT_PORT: ${env:VAULT_PORT}
-      VAULT_IAM_ROLE: ${env:VAULT_IAM_ROLE}
-      VAULT_SECRET_PATH: ${env:VAULT_SECRET_PATH}
-      SERVICE_DESK_USERNAME: ${env:SERVICE_DESK_USERNAME}
-      SERVICE_DESK_DOMAIN: ${env:SERVICE_DESK_DOMAIN}
-      VERIFICATION_FROM_EMAIL_ADDR: ${env:VERIFICATION_FROM_EMAIL_ADDR}
-    description: Verify the GET token header from the email verification link. Create the new Ticket. Delete the form entry from DynamoDB.
-    events:
-      - http:
-          path: formVerify
-          method: get
-          private: false
 resources:
   Resources:
     FormsSNSTopic:
       Type: "AWS::SNS::Topic"
       Properties:
         TopicName: ServerlessFormsTopic-${opt:stage, self:provider.stage}
-    FormEntriesDynamoDbTable:
-      Type: "AWS::DynamoDB::Table"
-      DeletionPolicy: Retain
-      Properties:
-        AttributeDefinitions:
-          - AttributeName: "id"
-            AttributeType: "S"
-        KeySchema:
-          - AttributeName: "id"
-            KeyType: "HASH"
-        ProvisionedThroughput:
-          ReadCapacityUnits: 1
-          WriteCapacityUnits: 1
-        StreamSpecification:
-          StreamViewType: "NEW_AND_OLD_IMAGES"
-        TableName: ${self:provider.environment.ENTRIES_TABLE}
+    # FormEntriesDynamoDbTable:
+    #   Type: "AWS::DynamoDB::Table"
+    #   DeletionPolicy: Retain
+    #   Properties:
+    #     AttributeDefinitions:
+    #       - AttributeName: "id"
+    #         AttributeType: "S"
+    #     KeySchema:
+    #       - AttributeName: "id"
+    #         KeyType: "HASH"
+    #     ProvisionedThroughput:
+    #       ReadCapacityUnits: 1
+    #       WriteCapacityUnits: 1
+    #     StreamSpecification:
+    #       StreamViewType: "NEW_AND_OLD_IMAGES"
+    #     TableName: ${self:provider.environment.ENTRIES_TABLE}
 package:
   exclude:
     - ./form_data.json

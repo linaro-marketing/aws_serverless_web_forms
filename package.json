@@ -1,7 +1,7 @@
 {
   "name": "serverless_web_forms",
   "version": "1.0.0",
-  "description": "A Serverless Service for the handling of static website forms. Upon submission of the form, a verification email is sent with a link that needs to be clicked before the form is submitted",
+  "description": "A Serverless Service for the handling of static website forms. Upon submission of the form, a confirmation email is sent and a Service Desk ticket is created.",
   "main": "index.js",
   "author": "Kyle Kirkby",
   "license": "MIT",
@@ -11,6 +11,7 @@
     "body-parser": "^1.19.0",
     "node-fetch": "^3.3.2",
     "node-vault": "^0.9.21",
+    "serverless": "^3.38.0",
     "uuid": "^8.3.2"
   },
   "devDependencies": {
