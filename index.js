@@ -254,6 +254,7 @@ const submitTicket = async (form_submission_data, event) => {
     await addUserToServiceDeskProject(formData, user, secret);
     console.log("User added to Service Desk Project");
     await createServiceDeskRequest(form_submission_data, formData, secret);
+    console.log("Service desk ticket created...");
   } finally {
     await vault.tokenRevokeSelf();
   }
