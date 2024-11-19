@@ -41,6 +41,7 @@ functions:
   formSubmission:
     handler: index.submit
     memorySize: 128
+    timeout: 30
     environment:
       VERIFICATION_FROM_EMAIL_ADDR: ${env:VERIFICATION_FROM_EMAIL_ADDR}
       VAULT_DOMAIN: ${env:VAULT_DOMAIN}
