@@ -24,11 +24,11 @@
     "requestType": "LTS Request"
   },
   {
-    "projectName": "Linaro Contact",
-    "requestType": "Website Request"
-  },
-  {
     "projectName": "Linaro Marketing",
     "requestType": "Media Inquiry"
+  },
+  {
+    "projectName": "Linaro Contact",
+    "requestType": "Webinar contact"
   }
 ]
