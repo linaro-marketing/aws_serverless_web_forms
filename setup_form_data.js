@@ -5,7 +5,8 @@
 // It will also validate the request fields against the API
 const fs = require("fs");
 // const fetch = require("node-fetch");
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+const fetch = (...args) =>
+  import("node-fetch").then(({ default: fetch }) => fetch(...args));
 const prompt = require("prompt");
 const service_desk_domain = "linaro-servicedesk.atlassian.net"; // "servicedesk.linaro.org";
 // Get the args
@@ -148,25 +149,34 @@ const main = async (result) => {
           `Collecting data for ${formEntry.projectName} - ${formEntry.requestType}...`
         );
         const formEntryDataPromise = getData(formEntry, index);
+        console.log("formEntryDataPromise: ", formEntryDataPromise);
         promiseArray.push(formEntryDataPromise);
       });
-      var collectedData = await Promise.all(promiseArray);
-      console.log(`Data has been collected!`);
-      console.log(`Writing ${argv.outPath} file...`);
-      fs.writeFile(
-        argv.outPath,
-        JSON.stringify(collectedData),
-        "utf8",
-        (err) => {
-          if (err) throw err;
-          console.log(`${argv.outPath} has been written!`);
-        }
-      );
-      // Create some example form HTML data.
-      console.log("Creating example HTML forms...");
-      collectedData.forEach((form, index) => {
-        createExampleFormHTML(form);
-      });
+      try {
+        const collectedData = await Promise.all(promiseArray);
+        console.log(`Data has been collected!`);
+        console.log(`Writing ${argv.outPath} file...`);
+        fs.writeFile(
+          argv.outPath,
+          JSON.stringify(collectedData),
+          "utf8",
+          (err) => {
+            if (err) throw err;
+            console.log(`${argv.outPath} has been written!`);
+          }
+        );
+      } catch (e) {
+        console.log("promise array error: ", e);
+      }
+      try {
+        // Create some example form HTML data.
+        console.log("Creating example HTML forms...");
+        collectedData.forEach((form, index) => {
+          createExampleFormHTML(form);
+        });
+      } catch (e) {
+        console.log("create forms error: ", e);
+      }
     });
   } else {
     console.log("");

@@ -201,6 +201,9 @@ const createServiceDeskRequest = async (
   secret
 ) => {
   let preparedSubmissionData = { ...form_submission_data };
+  if (preparedSubmissionData.formName) {
+    delete preparedSubmissionData.formName;
+  }
   let requestEmail = preparedSubmissionData["email"];
   delete preparedSubmissionData["email"];
   delete preparedSubmissionData["form_id"];
@@ -210,6 +213,7 @@ const createServiceDeskRequest = async (
     requestFieldValues: preparedSubmissionData,
     raiseOnBehalfOf: requestEmail,
   };
+  console.log("CreateServiceDeskRequestPayload: ", payload);
 
   const res = await serviceDeskRequest(
     `/rest/servicedeskapi/request`,
@@ -217,9 +221,9 @@ const createServiceDeskRequest = async (
     secret,
     payload
   );
+  console.log("result", res);
 
   if (!res.ok) {
-    console.log("!res.ok", res);
     throw new Error(
       `HTTP status ${res.status}: FailedToCreateServiceDeskRequest`
     );
