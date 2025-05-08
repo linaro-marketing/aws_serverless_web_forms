@@ -5,7 +5,7 @@ useDotenv: true
 provider:
   name: aws
   stage: prod # ${opt:stage}
-  runtime: nodejs18.x
+  runtime: nodejs20.x
   region: us-east-1
   lambdaHashingVersion: 20201221
   environment:
