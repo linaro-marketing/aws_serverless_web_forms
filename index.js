@@ -58,6 +58,49 @@ const getSignedAWSLoginConfig = (role, id) => {
   };
 };
 
+const verifyCaptcha = async (captchaResponse) => {
+  console.log("Verifying captcha...");
+  const apiKey = process.env.FRIENDLY_CAPTCHA_API_KEY;
+  const sitekey = process.env.FRIENDLY_CAPTCHA_SITEKEY;
+
+  if (!apiKey || !sitekey) {
+    console.error("Friendly Captcha API Key or Sitekey is not configured.");
+    // Fail closed if captcha is not configured.
+    return false;
+  }
+
+  if (!captchaResponse) {
+    console.error("Captcha response not present in submission.");
+    return false;
+  }
+
+  const verificationUrl = "https://global.frcapi.com/api/v2/captcha/siteverify";
+
+  try {
+    const response = await fetch(verificationUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Api-Key": apiKey,
+      },
+      body: JSON.stringify({
+        response: captchaResponse,
+        sitekey: sitekey,
+      }),
+    });
+
+    const json = await response.json();
+    if (json.success) {
+      console.log("Captcha verification successful.");
+      return true;
+    }
+    console.error("Captcha verification failed:", json.error);
+  } catch (error) {
+    console.error("Error during captcha verification:", error);
+  }
+  return false;
+};
+
 const sendVerificationEmail = (inputs, templateName, sendTo, formId, event) => {
   let templateData = {
     name: inputs["customfield_13155"],
@@ -267,6 +310,15 @@ const submitTicket = async (form_submission_data, event) => {
 module.exports.submit = async (event, context, callback) => {
   try {
     const form_submission_data = JSON.parse(event.body);
+
+    const captchaVerified = await verifyCaptcha(
+      form_submission_data["frc-captcha-response"]
+    );
+    if (!captchaVerified) {
+      console.error("Captcha verification failed.");
+      throw new Error("CaptchaFailed");
+    }
+
     var formValid = validateForm(form_submission_data);
 
     if (!formValid) {
