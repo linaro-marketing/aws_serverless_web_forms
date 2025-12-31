@@ -119,6 +119,9 @@ async function main() {
   console.log(`✅ Form data written to: ${argv.outPath}`);
 
   console.log(`🧱 Generating HTML examples...`);
+  if (!fs.existsSync("html_examples")) {
+    fs.mkdirSync("html_examples", { recursive: true });
+  }
   results.forEach(createExampleFormHTML);
   console.log(`✨ Done`);
 }
