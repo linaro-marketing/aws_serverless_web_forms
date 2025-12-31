@@ -4,17 +4,21 @@ useDotenv: true
 # Our serverless infra provider section
 provider:
   name: aws
-  stage: prod # ${opt:stage}
+  stage: ${opt:stage, 'staging'}
+  tags:
+    Project: serverless-web-forms
+    Stage: ${self:provider.stage}
   runtime: nodejs20.x
   region: us-east-1
   lambdaHashingVersion: 20201221
   environment:
-    ENTRIES_TABLE: ${self:service}-${opt:stage, self:provider.stage}
+    NODE_ENV: ${self:provider.stage}
+    ENTRIES_TABLE: ${self:service}-${self:provider.stage}
     SNS_TOPIC_ARN: !Ref FormsSNSTopic
   apiGateway:
     shouldStartNameWithService: true
     apiKeys:
-      - name: website-${opt:stage, self:provider.stage}
+      - name: website-${self:provider.stage}
     usagePlan:
       quota:
         limit: 300
@@ -49,7 +53,10 @@ functions:
       VAULT_IAM_ROLE: ${env:VAULT_IAM_ROLE}
       VAULT_SECRET_PATH: ${env:VAULT_SECRET_PATH}
       SERVICE_DESK_USERNAME: ${env:SERVICE_DESK_USERNAME}
+      SERVICE_DESK_API_KEY: ${env:SERVICE_DESK_API_KEY}
       SERVICE_DESK_DOMAIN: ${env:SERVICE_DESK_DOMAIN}
+      PUBLIC_FRIENDLY_CAPTCHA_API_KEY: ${env:PUBLIC_FRIENDLY_CAPTCHA_API_KEY}
+      PUBLIC_FRIENDLY_CAPTCHA_SITEKEY: ${env:PUBLIC_FRIENDLY_CAPTCHA_SITEKEY}
     description: Create ticket and send the confirmation email.
     events:
       - http:
@@ -71,7 +78,7 @@ resources:
     FormsSNSTopic:
       Type: "AWS::SNS::Topic"
       Properties:
-        TopicName: ServerlessFormsTopic-${opt:stage, self:provider.stage}
+        TopicName: ServerlessFormsTopic-${self:provider.stage}
     # FormEntriesDynamoDbTable:
     #   Type: "AWS::DynamoDB::Table"
     #   DeletionPolicy: Retain
