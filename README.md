@@ -17,7 +17,11 @@ To get started with this project you'll need:
 ```
 SERVICE_DESK_DOMAIN=
 VERIFICATION_FROM_EMAIL_ADDR=
+VAULT_PORT=
+VAULT_DOMAIN=
 SERVICE_DESK_USERNAME=
+VAULT_SECRET_PATH=
+VAULT_IAM_ROLE=
 ```
 
 ### Pre-processing (if using Atlassian Service Desk)
@@ -50,7 +54,6 @@ To deploy the production environment stack run `aws2-wrap --profile <YOUR_AWS_PR
 You may need to make sure your account has the correct permissions to deploy the neccessary resources. I've generated some base IAM policies with `yeoman`/`serverless-policy` (examples of these are in `config/`).
 
 ## SES Templates
-
 The stored SES templates can be checked with:
 
 ```
