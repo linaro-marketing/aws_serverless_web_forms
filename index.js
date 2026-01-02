@@ -4,84 +4,27 @@ const fs = require("fs");
 const AWS = require("aws-sdk");
 const fetch = (...args) =>
   import("node-fetch").then(({ default: fetch }) => fetch(...args));
-const nv = require("node-vault");
-var aws4 = require("aws4");
+
 AWS.config.setPromisesDependency(require("bluebird"));
 const ses = new AWS.SES({
   region: "us-east-1",
 });
 
-const vault = nv({
-  apiVersion: "v1",
-  endpoint: `https://${process.env.VAULT_DOMAIN}:${process.env.VAULT_PORT}`,
-});
-vault.generateFunction("awsIamLogin", {
-  method: "POST",
-  path: "/auth/aws/login",
-});
-
-const vaultLogin = async () => {
-  const postBody = await getSignedAWSLoginConfig(
-    process.env.VAULT_IAM_ROLE,
-    process.env.VAULT_DOMAIN
-  );
-  return await vault.awsIamLogin(postBody);
-};
-
-const getSignedAWSLoginConfig = (role, id) => {
-  var body = "Action=GetCallerIdentity&Version=2011-06-15";
-  var url = "https://sts.amazonaws.com/";
-  var signedRequest;
-  if (id) {
-    signedRequest = aws4.sign({
-      service: "sts",
-      headers: { "X-Vault-AWS-IAM-Server-ID": id },
-      body: body,
-    });
-  } else {
-    signedRequest = aws4.sign({ service: "sts", body: body });
-  }
-
-  var headers = signedRequest.headers;
-  for (let header in headers) {
-    headers[header] = [headers[header].toString()];
-  }
-
-  return {
-    role: role,
-    iam_http_request_method: "POST",
-    iam_request_url: Buffer.from(url, "utf8").toString("base64"),
-    iam_request_body: Buffer.from(body, "utf8").toString("base64"),
-    iam_request_headers: Buffer.from(JSON.stringify(headers), "utf8").toString(
-      "base64"
-    ),
-  };
-};
-
-const sendVerificationEmail = (inputs, templateName, sendTo, formId, event) => {
-  let templateData = {
+const sendVerificationEmail = async (inputs, templateName, sendTo) => {
+  const templateData = {
     name: inputs["customfield_13155"],
     description: inputs["description"] ?? inputs["customfield_13365"],
   };
 
   const params = {
     Template: templateName,
-    Destination: {
-      ToAddresses: [sendTo],
-    },
+    Destination: { ToAddresses: [sendTo] },
     Source: process.env.VERIFICATION_FROM_EMAIL_ADDR,
-    TemplateData: JSON.stringify(templateData || {}),
+    TemplateData: JSON.stringify(templateData),
   };
 
-  ses.sendTemplatedEmail(params, (err, data) => {
-    if (err) {
-      console.log("Error whilst sending email:", err);
-      return false;
-    } else {
-      console.log("Confirmation Email Sent");
-      return true;
-    }
-  });
+  await ses.sendTemplatedEmail(params).promise();
+  console.log("Confirmation Email Sent");
 };
 
 const validateForm = (formData) => {
@@ -207,6 +150,7 @@ const createServiceDeskRequest = async (
   let requestEmail = preparedSubmissionData["email"];
   delete preparedSubmissionData["email"];
   delete preparedSubmissionData["form_id"];
+  // delete preparedSubmissionData["frc-captcha-solution"];
   const payload = {
     serviceDeskId: formData.projectId,
     requestTypeId: formData.requestTypeId,
@@ -248,25 +192,73 @@ const submitTicket = async (form_submission_data, event) => {
   console.log("Submitting Ticket...", form_submission_data);
   const formData = fetchFormData(form_submission_data.form_id.toString());
   console.log("Form Data: ", formData);
-  const authResult = await vaultLogin();
   try {
-    vault.token = authResult.auth.client_token;
-    const result = await vault.read(process.env.VAULT_SECRET_PATH);
+    const secret = process.env.SERVICE_DESK_API_KEY;
+    if (!secret) {
+      throw new Error("Missing SERVICE_DESK_API_KEY");
+    }
     console.log("Auth successful...");
-    const secret = result.data.pw;
     const user = await getServiceDeskUserAccount(form_submission_data, secret);
     await addUserToServiceDeskProject(formData, user, secret);
     console.log("User added to Service Desk Project");
     await createServiceDeskRequest(form_submission_data, formData, secret);
     console.log("Service desk ticket created...");
-  } finally {
-    await vault.tokenRevokeSelf();
+  } catch (e) {
+    console.error("Error submitting ticket: ", e);
+    throw e;
   }
 };
 
-module.exports.submit = async (event, context, callback) => {
+// const verifyCaptcha = async (solution) => {
+//   const secretKey = process.env.PUBLIC_FRIENDLY_CAPTCHA_API_KEY;
+//   const siteKey = process.env.PUBLIC_FRIENDLY_CAPTCHA_SITEKEY;
+
+//   console.log("Verifying FriendlyCaptcha solution...");
+
+//   const response = await fetch(
+//     "https://api.friendlycaptcha.com/api/v1/siteverify",
+//     {
+//       method: "POST",
+//       headers: { "Content-Type": "application/json" },
+//       body: JSON.stringify({
+//         solution: solution,
+//         secret: secretKey,
+//         sitekey: siteKey,
+//       }),
+//     }
+//   );
+
+//   const data = await response.json();
+//   if (!data.success) {
+//     console.error("Captcha verification failed:", data.errors);
+//   }
+//   return data.success;
+// };
+
+module.exports.submit = async (event) => {
   try {
     const form_submission_data = JSON.parse(event.body);
+
+    // // 1. CAPTCHA VERIFICATION
+    // const captchaSolution = form_submission_data["frc-captcha-solution"];
+    // if (!captchaSolution) {
+    //   return {
+    //     statusCode: 400,
+    //     headers: { "Access-Control-Allow-Origin": "*" },
+    //     body: JSON.stringify({ message: "Captcha solution is missing." }),
+    //   };
+    // }
+
+    // const isHuman = await verifyCaptcha(captchaSolution);
+    // if (!isHuman) {
+    //   return {
+    //     statusCode: 403,
+    //     headers: { "Access-Control-Allow-Origin": "*" },
+    //     body: JSON.stringify({ message: "Captcha verification failed." }),
+    //   };
+    // }
+
+    // 2. FORM VALIDATION
     var formValid = validateForm(form_submission_data);
 
     if (!formValid) {
@@ -277,9 +269,7 @@ module.exports.submit = async (event, context, callback) => {
       await sendVerificationEmail(
         form_submission_data,
         "confirmation_dev",
-        form_submission_data.email,
-        form_submission_data.form_id,
-        event
+        form_submission_data.email
       );
       callback(null, {
         statusCode: 200,

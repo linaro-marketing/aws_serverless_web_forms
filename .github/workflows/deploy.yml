@@ -51,10 +51,6 @@ jobs:
         run: |
           cat <<EOF > .env
           VERIFICATION_FROM_EMAIL_ADDR=${{ secrets.VERIFICATION_FROM_EMAIL_ADDR }}
-          VAULT_DOMAIN=${{ secrets.VAULT_DOMAIN }}
-          VAULT_PORT=${{ secrets.VAULT_PORT }}
-          VAULT_IAM_ROLE=${{ secrets.VAULT_IAM_ROLE }}
-          VAULT_SECRET_PATH=${{ secrets.VAULT_SECRET_PATH }}
           SERVICE_DESK_USERNAME=${{ secrets.SERVICE_DESK_USERNAME }}
           SERVICE_DESK_API_KEY=${{ secrets.SERVICE_DESK_API_KEY }}
           SERVICE_DESK_DOMAIN=${{ secrets.SERVICE_DESK_DOMAIN }}
