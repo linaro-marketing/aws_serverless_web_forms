@@ -4,181 +4,129 @@
 // to retrieve the projectId and requestTypeId
 // It will also validate the request fields against the API
 const fs = require("fs");
-// const fetch = require("node-fetch");
-const fetch = (...args) =>
-  import("node-fetch").then(({ default: fetch }) => fetch(...args));
-const prompt = require("prompt");
-const service_desk_domain = "linaro-servicedesk.atlassian.net"; // "servicedesk.linaro.org";
-// Get the args
-var argv = require("yargs/yargs")(process.argv.slice(2)).argv;
-var requestHeaders = {};
-console.log(
-  "Please enter your Atlassian Service Desk credentials in order to collect ticket data..."
-);
-prompt.start();
-prompt.get(
-  [
-    {
-      name: "email",
-    },
-    {
-      name: "password",
-      hidden: true,
-    },
-  ],
-  async (err, result) => {
-    if (err) {
-      return onErr(err);
-    }
-    await main(result);
-  }
-);
-function onErr(err) {
-  console.log(err);
-  return 1;
+const fetch = global.fetch;
+const argv = require("yargs/yargs")(process.argv.slice(2)).argv;
+
+const serviceDeskDomain = "linaro-servicedesk.atlassian.net"; // "servicedesk.linaro.org";
+
+const email = process.env.SERVICE_DESK_USERNAME;
+const apiKey = process.env.SERVICE_DESK_API_KEY;
+
+if (!email || !apiKey) {
+  console.error(
+    "Missing credentials: SERVICE_DESK_USERNAME or SERVICE_DESK_API_KEY."
+  );
+  process.exit(1);
 }
-const getData = (formEntry, index) => {
-  var newData = {};
-  return fetch(
-    `https://${service_desk_domain}/rest/servicedeskapi/servicedesk`,
-    requestHeaders
-  )
-    .then((response) => response.json())
-    .then((res) => {
-      let projects = res["values"];
-      var projectId = "";
-      for (let i = 0; i < projects.length; i++) {
-        if (projects[i].projectName === formEntry.projectName) {
-          projectId = projects[i].id;
-        }
-      }
-      return projectId;
-    })
-    .then((projectId) => {
-      return fetch(
-        `https://${service_desk_domain}/rest/servicedeskapi/servicedesk/${projectId}/requesttype`,
-        requestHeaders
-      );
-    })
-    .then((response) => response.json())
-    .then((res) => {
-      let requestTypes = res["values"];
-      var requestTypeId = "";
-      var projectId = "";
-      for (let i = 0; i < requestTypes.length; i++) {
-        if (requestTypes[i].name === formEntry.requestType) {
-          requestTypeId = requestTypes[i].id;
-          projectId = requestTypes[i].serviceDeskId;
-        }
-      }
-      newData = {
-        form_id: index + 1,
-        projectName: formEntry.projectName,
-        requestTypeName: formEntry.requestType,
-        projectId: projectId,
-        requestTypeId: requestTypeId,
-      };
-      return newData;
-    })
-    .then((newData) => {
-      return fetch(
-        `https://${service_desk_domain}/rest/servicedeskapi/servicedesk/${newData.projectId}/requesttype/${newData.requestTypeId}/field`,
-        requestHeaders
-      );
-    })
-    .then((response) => response.json())
-    .then((res) => {
-      newData.fields = res;
-      return newData;
-    })
-    .catch((err) => {
-      console.log("Please make sure your login credentials are correct!");
-      console.log(err);
-      return false;
-    });
+
+const requestHeaders = {
+  method: "GET",
+  headers: {
+    Authorization:
+      "Basic " + Buffer.from(`${email}:${apiKey}`).toString("base64"),
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  },
 };
-// Helper function to create an example HTML form for use in your static website
-const createExampleFormHTML = (form) => {
-  let newForm = `<form method="POST" action="">\n`;
-  form.fields.requestTypeFields.forEach((field, index) => {
-    if (field.jiraSchema.type === "string") {
-      newForm += `<input type="text" name="${field.fieldId}" placeholder="${field.name}"/>\n`;
-    } else if (field.jiraSchema.type === "array") {
-      field.validValues.forEach((checkboxField, i) => {
-        newForm += `<input type="checkbox" name="${field.fieldId}" id="${field.fieldId}-${i}" value="${checkboxField.value}"/>\n`;
-        newForm += `<label for="${field.fieldId}-${i}">${checkboxField.label}</label>\n`;
+
+const api = async (path) => {
+  const url = `https://${serviceDeskDomain}${path}`;
+  const res = await fetch(url, requestHeaders);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`HTTP ${res.status} for ${url}: ${text}`);
+  }
+  return res.json();
+};
+
+async function getFormData(formEntry, index) {
+  const { projectName, requestType } = formEntry;
+
+  const projects = await api(`/rest/servicedeskapi/servicedesk`);
+  const match = projects.values.find((p) => p.projectName === projectName);
+
+  if (!match) throw new Error(`Project not found: ${projectName}`);
+
+  const requestTypes = await api(
+    `/rest/servicedeskapi/servicedesk/${match.id}/requesttype`
+  );
+
+  console.log("Request Types: ", requestTypes);
+  const typeMatch = requestTypes.values.find((t) => t.name === requestType);
+
+  if (!typeMatch) throw new Error(`Request type not found: ${requestType}`);
+
+  const fields = await api(
+    `/rest/servicedeskapi/servicedesk/${match.id}/requesttype/${typeMatch.id}/field`
+  );
+
+  return {
+    form_id: index + 1,
+    projectName,
+    requestTypeName: requestType,
+    projectId: match.id,
+    requestTypeId: typeMatch.id,
+    fields,
+  };
+}
+
+function createExampleFormHTML(form) {
+  let html = `<form method="POST" action="">\n`;
+
+  form.fields.requestTypeFields.forEach((field) => {
+    const { fieldId, name, jiraSchema, validValues } = field;
+
+    if (jiraSchema.type === "string") {
+      html += `<input type="text" name="${fieldId}" placeholder="${name}"/>\n`;
+    }
+
+    if (jiraSchema.type === "array") {
+      validValues.forEach((val, i) => {
+        html += `<input type="checkbox" name="${fieldId}" id="${fieldId}-${i}" value="${val.value}"/>\n`;
+        html += `<label for="${fieldId}-${i}">${val.label}</label>\n`;
       });
     }
   });
-  newForm += `<input type="submit" value="Submit">\n`;
-  newForm += `</form>`;
-  fs.writeFile(
+
+  html += `<input type="submit" value="Submit">\n</form>`;
+
+  fs.writeFileSync(
     `html_examples/example_form-${form.form_id}.html`,
-    newForm,
-    "utf8",
-    (err) => {
-      if (err) throw err;
-      console.log(
-        `example_form-${form.form_id}.html example form has been written!`
-      );
-    }
+    html,
+    "utf8"
   );
-  return true;
-};
-const main = async (result) => {
-  requestHeaders = {
-    method: "GET",
-    headers: {
-      Authorization:
-        "Basic " +
-        Buffer.from(`${result.email}:${result.password}`).toString("base64"),
-    },
-  };
-  console.log(requestHeaders);
-  // Check for path arg
-  if (argv.path) {
-    console.log(`Reading config file - ${argv.path}...`);
-    // Read the requests.json config file
-    fs.readFile(argv.path, "utf8", async (err, data) => {
-      if (err) throw err;
-      const obj = JSON.parse(data);
-      var promiseArray = [];
-      // Loop over form configs
-      obj.forEach((formEntry, index) => {
-        console.log(
-          `Collecting data for ${formEntry.projectName} - ${formEntry.requestType}...`
-        );
-        const formEntryDataPromise = getData(formEntry, index);
-        console.log("formEntryDataPromise: ", formEntryDataPromise);
-        promiseArray.push(formEntryDataPromise);
-      });
-      try {
-        const collectedData = await Promise.all(promiseArray);
-        console.log(`Data has been collected!`);
-        console.log(`Writing ${argv.outPath} file...`);
-        fs.writeFile(
-          argv.outPath,
-          JSON.stringify(collectedData),
-          "utf8",
-          (err) => {
-            if (err) throw err;
-            console.log(`${argv.outPath} has been written!`);
-          }
-        );
-      } catch (e) {
-        console.log("promise array error: ", e);
-      }
-      try {
-        // Create some example form HTML data.
-        console.log("Creating example HTML forms...");
-        collectedData.forEach((form, index) => {
-          createExampleFormHTML(form);
-        });
-      } catch (e) {
-        console.log("create forms error: ", e);
-      }
-    });
-  } else {
-    console.log("");
+}
+
+async function main() {
+  if (!argv.path || !argv.outPath) {
+    console.error(
+      "Usage: node setup_form_data.js --path <config.json> --outPath <output.json>"
+    );
+    process.exit(1);
   }
-};
+
+  console.log(`📄 Reading config from: ${argv.path}`);
+
+  const config = JSON.parse(fs.readFileSync(argv.path, "utf8"));
+
+  const results = [];
+  for (const [index, form] of config.entries()) {
+    console.log(`📌 Fetching: ${form.projectName} / ${form.requestType}`);
+    results.push(await getFormData(form, index));
+  }
+
+  fs.writeFileSync(argv.outPath, JSON.stringify(results, null, 2), "utf8");
+  console.log(`✅ Form data written to: ${argv.outPath}`);
+
+  console.log(`🧱 Generating HTML examples...`);
+  if (!fs.existsSync("html_examples")) {
+    fs.mkdirSync("html_examples", { recursive: true });
+  }
+  results.forEach(createExampleFormHTML);
+  console.log(`✨ Done`);
+}
+
+main().catch((err) => {
+  console.error("❌ Fatal error:", err.message);
+  process.exit(1);
+});
