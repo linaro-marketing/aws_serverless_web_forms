@@ -2,8 +2,6 @@
 
 const fs = require("fs");
 const AWS = require("aws-sdk");
-const fetch = (...args) =>
-  import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
 AWS.config.setPromisesDependency(require("bluebird"));
 const ses = new AWS.SES({
@@ -61,6 +59,7 @@ const atlassianRequest = async (
       ).toString("base64")}`,
       "Content-Type": "application/json",
       Accept: "application/json",
+      "User-Agent": "Linaro-WebForms-Lambda/2.0",
     },
   };
 
