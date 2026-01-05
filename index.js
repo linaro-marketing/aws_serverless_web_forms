@@ -77,8 +77,12 @@ const atlassianRequest = async (
     requestHeaders
   );
 
+  console.log(res);
+
   const contentType = res.headers.get("content-type") || "";
   const rawBody = await res.text();
+
+  console.log(rawBody);
 
   if (!res.ok) {
     throw new Error(
@@ -111,6 +115,8 @@ const getServiceDeskUserAccount = async (form_submission_data, secret) => {
     "GET",
     secret
   );
+
+  console.log(result);
 
   if (!result.values || result.values.length === 0) {
     console.log("User not found, creating customer...");
