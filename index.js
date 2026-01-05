@@ -2,6 +2,8 @@
 
 const fs = require("fs");
 const AWS = require("aws-sdk");
+const fetch = (...args) =>
+  import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
 AWS.config.setPromisesDependency(require("bluebird"));
 const ses = new AWS.SES({
@@ -111,10 +113,13 @@ const jiraRequest = async (endpoint, method, password, payload = null) => {
             `${process.env.SERVICE_DESK_USERNAME}:${password}`
           ).toString("base64"),
         "Content-Type": "application/json",
+        "User-Agent": "NodeLambda/1.0",
       },
       body: payload ? JSON.stringify(payload) : undefined,
     }
   );
+
+  console.log("raw response: ", res);
 
   const text = await res.text();
   if (!res.ok) {
