@@ -10,7 +10,7 @@ const ses = new AWS.SES({
 
 const FORM_DATA = JSON.parse(fs.readFileSync("form_data.json", "utf8"));
 
-const sendVerificationEmail = async (inputs, templateName, sendTo) => {
+const sendConfirmationEmail = async (inputs, templateName, sendTo) => {
   const templateData = {
     name: inputs["customfield_13155"],
     description: inputs["description"] ?? inputs["customfield_13365"],
@@ -35,7 +35,8 @@ const validateForm = (formData, submission) => {
   );
 
   for (const field of requiredFields) {
-    if (!(field.fieldId in submission)) {
+    const value = submission[field.fieldId];
+    if (value === undefined || value === null || value === "") {
       return false;
     }
   }
@@ -43,92 +44,98 @@ const validateForm = (formData, submission) => {
   return "email" in submission;
 };
 
-const serviceDeskRequest = async (
+const atlassianRequest = async (
   endpoint,
   method,
   password,
-  payload,
+  payload = null,
   experimental = false
 ) => {
+  const headers = {
+    Authorization:
+      "Basic " +
+      Buffer.from(`${process.env.SERVICE_DESK_USERNAME}:${password}`).toString(
+        "base64"
+      ),
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+
+  if (experimental) {
+    headers["X-ExperimentalApi"] = "true";
+  }
+
   const res = await fetch(
     `https://${process.env.SERVICE_DESK_DOMAIN}${endpoint}`,
     {
       method,
-      headers: {
-        Authorization:
-          "Basic " +
-          Buffer.from(
-            `${process.env.SERVICE_DESK_USERNAME}:${password}`
-          ).toString("base64"),
-        "Content-Type": "application/json",
-        ...(experimental && { "X-ExperimentalApi": true }),
-      },
-      ...(payload && { body: JSON.stringify(payload) }),
+      headers,
+      body: payload ? JSON.stringify(payload) : undefined,
     }
   );
 
+  const contentType = res.headers.get("content-type") || "";
+  const rawBody = await res.text();
+
   if (!res.ok) {
-    const text = await res.text();
-    console.error("ServiceDesk error:", res.status, text);
+    throw new Error(
+      `Atlassian API error ${res.status} ${method} ${endpoint}\n` +
+        rawBody.slice(0, 500)
+    );
   }
 
-  return res;
-};
+  if (!contentType.includes("application/json")) {
+    throw new Error(
+      `Expected JSON from Atlassian but got ${contentType} from ${endpoint}\n` +
+        rawBody.slice(0, 500)
+    );
+  }
 
+  try {
+    return JSON.parse(rawBody);
+  } catch (e) {
+    throw new Error(
+      `Failed to parse JSON from Atlassian\n` + e + rawBody.slice(0, 500)
+    );
+  }
+};
 const getServiceDeskUserAccount = async (form_submission_data, secret) => {
-  console.log("Fetching SD user account...: ");
-  const sdResponse = await serviceDeskRequest(
-    `/rest/api/3/user/search?query=${form_submission_data.email}`,
+  console.log("Fetching SD user account...");
+
+  const result = await atlassianRequest(
+    `/rest/servicedeskapi/customer?query=${encodeURIComponent(
+      form_submission_data.email
+    )}`,
     "GET",
     secret
   );
 
-  if (!sdResponse.ok) {
-    if (sdResponse.status !== 404) {
-      throw new Error(
-        `HTTP status ${sdResponse.status}: FailedToAddUserToServiceDeskProject}`
-      );
-    }
-  }
+  if (!result.values || result.values.length === 0) {
+    console.log("User not found, creating customer...");
 
-  const jsonRes = await sdResponse.json();
-  if (jsonRes.length === 0) {
-    console.log("User account not found, creating customer account...");
-    const full_name = form_submission_data.email;
-    const createCustomerRes = await serviceDeskRequest(
+    return await atlassianRequest(
       `/rest/servicedeskapi/customer`,
       "POST",
       secret,
-      { email: form_submission_data.email, displayName: full_name },
+      {
+        email: form_submission_data.email,
+        displayName: form_submission_data.email,
+      },
       true
     );
-
-    if (!createCustomerRes.ok) {
-      throw new Error(
-        `HTTP status ${createCustomerRes.status}: FailedToCreateUserAsNewCustomer`
-      );
-    }
-
-    return await createCustomerRes.json();
-  } else {
-    return jsonRes[0];
   }
+
+  return result.values[0];
 };
 
 const addUserToServiceDeskProject = async (formData, user, secret) => {
-  const res = await serviceDeskRequest(
+  await atlassianRequest(
     `/rest/servicedeskapi/servicedesk/${formData.projectId}/customer`,
     "POST",
     secret,
     { accountIds: [user.accountId] },
     true
   );
-
-  if (!res.ok) {
-    throw new Error(
-      `HTTP status ${res.status}: FailedToAddUserToServiceDeskProject`
-    );
-  }
 };
 
 const createServiceDeskRequest = async (
@@ -136,13 +143,11 @@ const createServiceDeskRequest = async (
   formData,
   secret
 ) => {
-  let preparedSubmissionData = { ...form_submission_data };
-  if (preparedSubmissionData.formName) {
-    delete preparedSubmissionData.formName;
-  }
-  let requestEmail = preparedSubmissionData["email"];
-  delete preparedSubmissionData["email"];
-  delete preparedSubmissionData["form_id"];
+  const preparedSubmissionData = { ...form_submission_data };
+
+  const requestEmail = preparedSubmissionData.email;
+  delete preparedSubmissionData.email;
+  delete preparedSubmissionData.form_id;
   // delete preparedSubmissionData["frc-captcha-solution"];
   const payload = {
     serviceDeskId: formData.projectId,
@@ -150,30 +155,28 @@ const createServiceDeskRequest = async (
     requestFieldValues: preparedSubmissionData,
     raiseOnBehalfOf: requestEmail,
   };
-  console.log("CreateServiceDeskRequestPayload: ", payload);
 
-  const res = await serviceDeskRequest(
+  console.log("CreateServiceDeskRequestPayload:", payload);
+
+  return await atlassianRequest(
     `/rest/servicedeskapi/request`,
     "POST",
     secret,
     payload
   );
-  console.log("result", res);
-
-  if (!res.ok) {
-    throw new Error(
-      `HTTP status ${res.status}: FailedToCreateServiceDeskRequest`
-    );
-  }
-
-  return await res.json();
 };
+
 const fetchFormData = (form_id) => {
-  return FORM_DATA.find((form) => form.form_id.toString() === form_id) || false;
+  const id = form_id.toString();
+  return FORM_DATA.find((form) => form.form_id.toString() === id) || null;
 };
+
 const submitTicket = async (form_submission_data) => {
   console.log("Submitting Ticket...", form_submission_data);
-  const formData = fetchFormData(form_submission_data.form_id.toString());
+  const formData = fetchFormData(form_submission_data.form_id);
+  if (!formData) {
+    throw new Error(`Unknown form_id ${form_submission_data.form_id}`);
+  }
   console.log("Form Data: ", formData);
   try {
     const secret = process.env.SERVICE_DESK_API_KEY;
@@ -262,11 +265,15 @@ module.exports.submit = async (event) => {
     await submitTicket(form_submission_data);
 
     // 5. EMAIL
-    await sendVerificationEmail(
-      form_submission_data,
-      "confirmation_dev",
-      form_submission_data.email
-    );
+    try {
+      await sendConfirmationEmail(
+        form_submission_data,
+        "confirmation_dev",
+        form_submission_data.email
+      );
+    } catch (e) {
+      console.warn("Confirmation email failed after ticket creation", e);
+    }
 
     // 6. SUCCESS
     return response(200, {
