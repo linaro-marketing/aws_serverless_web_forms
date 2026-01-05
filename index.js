@@ -55,12 +55,13 @@ const atlassianRequest = async (
 ) => {
   const requestHeaders = {
     method,
-    Authorization:
-      "Basic " +
-      Buffer.from(`${process.env.SERVICE_DESK_USERNAME}:${password}`).toString(
-        "base64"
-      ),
-    "Content-Type": "application/json",
+    headers: {
+      Authorization: `Basic ${Buffer.from(
+        `${process.env.SERVICE_DESK_USERNAME}:${password}`
+      ).toString("base64")}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
   };
 
   if (experimental) {
