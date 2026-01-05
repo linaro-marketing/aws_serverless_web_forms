@@ -53,7 +53,8 @@ const atlassianRequest = async (
   payload = null,
   experimental = false
 ) => {
-  const headers = {
+  const requestHeaders = {
+    method,
     Authorization:
       "Basic " +
       Buffer.from(`${process.env.SERVICE_DESK_USERNAME}:${password}`).toString(
@@ -63,16 +64,16 @@ const atlassianRequest = async (
   };
 
   if (experimental) {
-    headers["X-ExperimentalApi"] = "true";
+    requestHeaders["X-ExperimentalApi"] = true;
+  }
+
+  if (payload) {
+    requestHeaders.body = JSON.stringify(payload);
   }
 
   const res = await fetch(
     `https://${process.env.SERVICE_DESK_DOMAIN}${endpoint}`,
-    {
-      method,
-      headers,
-      body: payload ? JSON.stringify(payload) : undefined,
-    }
+    requestHeaders
   );
 
   const contentType = res.headers.get("content-type") || "";
@@ -101,40 +102,10 @@ const atlassianRequest = async (
   }
 };
 
-const jiraRequest = async (endpoint, method, password) => {
-  const res = await fetch(
-    `https://${process.env.SERVICE_DESK_DOMAIN}${endpoint}`,
-    {
-      method,
-      headers: {
-        Authorization:
-          "Basic " +
-          Buffer.from(
-            `${process.env.SERVICE_DESK_USERNAME}:${password}`
-          ).toString("base64"),
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) NodeLambda/1.0",
-      },
-      redirect: "manual",
-    }
-  );
-
-  console.log("raw response: ", res);
-
-  const text = await res.text();
-  if (!res.ok) {
-    throw new Error(`Jira API ${res.status}: ${text.slice(0, 300)}`);
-  }
-
-  return JSON.parse(text);
-};
-
 const getServiceDeskUserAccount = async (form_submission_data, secret) => {
   console.log("Fetching SD user account...");
 
-  const result = await jiraRequest(
+  const result = await atlassianRequest(
     `/rest/api/3/user/search?query=${form_submission_data.email}`,
     "GET",
     secret
