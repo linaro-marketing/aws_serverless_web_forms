@@ -2,13 +2,13 @@
 
 const fs = require("fs");
 const AWS = require("aws-sdk");
-const fetch = (...args) =>
-  import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
 AWS.config.setPromisesDependency(require("bluebird"));
 const ses = new AWS.SES({
   region: "us-east-1",
 });
+
+const FORM_DATA = JSON.parse(fs.readFileSync("form_data.json", "utf8"));
 
 const sendVerificationEmail = async (inputs, templateName, sendTo) => {
   const templateData = {
@@ -27,59 +27,52 @@ const sendVerificationEmail = async (inputs, templateName, sendTo) => {
   console.log("Confirmation Email Sent");
 };
 
-const validateForm = (formData) => {
-  let form_id = formData["form_id"];
-  let validFormData = fetchFormData(form_id);
-  if (!validFormData) {
-    console.log("Couldn't fetch form_data for the form_id provided.");
-    return false;
-  } else {
-    const validRequiredRequestFields =
-      validFormData.fields.requestTypeFields.filter((entry) => {
-        return entry.required === true;
-      });
-    for (let i = 0; i < validRequiredRequestFields.length; i++) {
-      if (!formData.hasOwnProperty(validRequiredRequestFields[i].fieldId)) {
-        console.log("Missing a required field.");
-        return false;
-      }
-    }
-    if (!formData.hasOwnProperty("email")) {
-      console.log("Missing the email field.");
+const validateForm = (formData, submission) => {
+  if (!formData) return false;
+
+  const requiredFields = formData.fields.requestTypeFields.filter(
+    (f) => f.required
+  );
+
+  for (const field of requiredFields) {
+    if (!(field.fieldId in submission)) {
       return false;
     }
   }
-  return true;
+
+  return "email" in submission;
 };
 
-const serviceDeskRequest = (
+const serviceDeskRequest = async (
   endpoint,
   method,
   password,
-  payload = false,
+  payload,
   experimental = false
 ) => {
-  const requestHeaders = {
-    method: method,
-    headers: {
-      Authorization:
-        "Basic " +
-        Buffer.from(
-          `${process.env.SERVICE_DESK_USERNAME}:${password}`
-        ).toString("base64"),
-      "Content-Type": "application/json",
-    },
-  };
-  if (payload) {
-    requestHeaders.body = JSON.stringify(payload);
-  }
-  if (experimental) {
-    requestHeaders["headers"]["X-ExperimentalApi"] = true;
-  }
-  return fetch(
+  const res = await fetch(
     `https://${process.env.SERVICE_DESK_DOMAIN}${endpoint}`,
-    requestHeaders
+    {
+      method,
+      headers: {
+        Authorization:
+          "Basic " +
+          Buffer.from(
+            `${process.env.SERVICE_DESK_USERNAME}:${password}`
+          ).toString("base64"),
+        "Content-Type": "application/json",
+        ...(experimental && { "X-ExperimentalApi": true }),
+      },
+      ...(payload && { body: JSON.stringify(payload) }),
+    }
   );
+
+  if (!res.ok) {
+    const text = await res.text();
+    console.error("ServiceDesk error:", res.status, text);
+  }
+
+  return res;
 };
 
 const getServiceDeskUserAccount = async (form_submission_data, secret) => {
@@ -176,19 +169,9 @@ const createServiceDeskRequest = async (
   return await res.json();
 };
 const fetchFormData = (form_id) => {
-  let rawFormData = fs.readFileSync("form_data.json");
-  let tempformData = JSON.parse(rawFormData);
-  var foundForm = false;
-  var formData = {};
-  tempformData.forEach((form, index) => {
-    if (form.form_id.toString() === form_id) {
-      formData = form;
-      foundForm = true;
-    }
-  });
-  return foundForm ? formData : false;
+  return FORM_DATA.find((form) => form.form_id.toString() === form_id) || false;
 };
-const submitTicket = async (form_submission_data, event) => {
+const submitTicket = async (form_submission_data) => {
   console.log("Submitting Ticket...", form_submission_data);
   const formData = fetchFormData(form_submission_data.form_id.toString());
   console.log("Form Data: ", formData);
@@ -235,66 +218,66 @@ const submitTicket = async (form_submission_data, event) => {
 //   return data.success;
 // };
 
+const response = (statusCode, body) => ({
+  statusCode,
+  headers: {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Credentials": true,
+  },
+  body: JSON.stringify(body),
+});
+
 module.exports.submit = async (event) => {
   try {
+    if (!event.body) {
+      return response(400, { message: "Missing request body" });
+    }
+
     const form_submission_data = JSON.parse(event.body);
 
-    // // 1. CAPTCHA VERIFICATION
+    // 1. (Optional) CAPTCHA — re-enable later
+    // ----------------------------------------
     // const captchaSolution = form_submission_data["frc-captcha-solution"];
     // if (!captchaSolution) {
-    //   return {
-    //     statusCode: 400,
-    //     headers: { "Access-Control-Allow-Origin": "*" },
-    //     body: JSON.stringify({ message: "Captcha solution is missing." }),
-    //   };
+    //   return response(400, { message: "Captcha solution is missing" });
     // }
-
+    //
     // const isHuman = await verifyCaptcha(captchaSolution);
     // if (!isHuman) {
-    //   return {
-    //     statusCode: 403,
-    //     headers: { "Access-Control-Allow-Origin": "*" },
-    //     body: JSON.stringify({ message: "Captcha verification failed." }),
-    //   };
+    //   return response(403, { message: "Captcha verification failed" });
     // }
 
-    // 2. FORM VALIDATION
-    var formValid = validateForm(form_submission_data);
-
-    if (!formValid) {
-      console.error("Validation Failed");
-      throw new Error("FormValidationFailed");
-    } else {
-      await submitTicket(form_submission_data, event);
-      await sendVerificationEmail(
-        form_submission_data,
-        "confirmation_dev",
-        form_submission_data.email
-      );
-      callback(null, {
-        statusCode: 200,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Credentials": true,
-        },
-        body: JSON.stringify({
-          message: `Sucessfully submitted form with email ${form_submission_data.email}`,
-          formId: form_submission_data.form_id,
-        }),
-      });
+    // 2. FORM LOOKUP
+    const formData = fetchFormData(form_submission_data.form_id);
+    if (!formData) {
+      return response(400, { message: "Unknown form_id" });
     }
+
+    // 3. FORM VALIDATION
+    if (!validateForm(formData, form_submission_data)) {
+      return response(400, { message: "Invalid form submission" });
+    }
+
+    // 4. BUSINESS LOGIC
+    await submitTicket(form_submission_data);
+
+    // 5. EMAIL
+    await sendVerificationEmail(
+      form_submission_data,
+      "confirmation_dev",
+      form_submission_data.email
+    );
+
+    // 6. SUCCESS
+    return response(200, {
+      message: `Successfully submitted form with email ${form_submission_data.email}`,
+      formId: form_submission_data.form_id,
+    });
   } catch (error) {
     console.error("Error during submission:", error);
-    return {
-      statusCode: 500,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Credentials": true,
-      },
-      body: JSON.stringify({
-        message: "An error occurred while processing the submission.",
-        error: error.message,
-      }),
-    };
+
+    return response(500, {
+      message: "An error occurred while processing the submission",
+    });
   }
 };
