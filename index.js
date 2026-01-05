@@ -53,7 +53,7 @@ const atlassianRequest = async (
   payload = null,
   experimental = false
 ) => {
-  const requestHeaders = {
+  const requestOptions = {
     method,
     headers: {
       Authorization: `Basic ${Buffer.from(
@@ -65,16 +65,16 @@ const atlassianRequest = async (
   };
 
   if (experimental) {
-    requestHeaders["X-ExperimentalApi"] = true;
+    requestOptions.headers["X-ExperimentalApi"] = true;
   }
 
   if (payload) {
-    requestHeaders.body = JSON.stringify(payload);
+    requestOptions.body = JSON.stringify(payload);
   }
 
   const res = await fetch(
     `https://${process.env.SERVICE_DESK_DOMAIN}${endpoint}`,
-    requestHeaders
+    requestOptions
   );
 
   console.log(res);
