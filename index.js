@@ -102,9 +102,7 @@ const getServiceDeskUserAccount = async (form_submission_data, secret) => {
   console.log("Fetching SD user account...");
 
   const result = await atlassianRequest(
-    `/rest/servicedeskapi/customer?query=${encodeURIComponent(
-      form_submission_data.email
-    )}`,
+    ` /rest/api/3/user/search?query=${form_submission_data.email}`,
     "GET",
     secret
   );
