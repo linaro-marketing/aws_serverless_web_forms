@@ -118,7 +118,7 @@ const getServiceDeskUserAccount = async (form_submission_data, secret) => {
 
   console.log(result);
 
-  if (!result.values || result.values.length === 0) {
+  if (!result || result.length === 0) {
     console.log("User not found, creating customer...");
 
     return await atlassianRequest(
@@ -133,7 +133,7 @@ const getServiceDeskUserAccount = async (form_submission_data, secret) => {
     );
   }
 
-  return result.values[0];
+  return result[0];
 };
 
 const addUserToServiceDeskProject = async (formData, user, secret) => {
