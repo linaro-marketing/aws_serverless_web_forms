@@ -58,7 +58,6 @@ const atlassianRequest = async (
         "base64"
       ),
     "Content-Type": "application/json",
-    Accept: "application/json",
   };
 
   if (experimental) {
