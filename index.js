@@ -101,7 +101,7 @@ const atlassianRequest = async (
   }
 };
 
-const jiraRequest = async (endpoint, method, password, payload = null) => {
+const jiraRequest = async (endpoint, method, password) => {
   const res = await fetch(
     `https://${process.env.SERVICE_DESK_DOMAIN}${endpoint}`,
     {
@@ -113,9 +113,11 @@ const jiraRequest = async (endpoint, method, password, payload = null) => {
             `${process.env.SERVICE_DESK_USERNAME}:${password}`
           ).toString("base64"),
         "Content-Type": "application/json",
-        "User-Agent": "NodeLambda/1.0",
+        Accept: "application/json",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) NodeLambda/1.0",
       },
-      body: payload ? JSON.stringify(payload) : undefined,
+      redirect: "manual",
     }
   );
 
