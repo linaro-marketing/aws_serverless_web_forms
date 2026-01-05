@@ -98,10 +98,36 @@ const atlassianRequest = async (
     );
   }
 };
+
+const jiraRequest = async (endpoint, method, password, payload = null) => {
+  const res = await fetch(
+    `https://${process.env.SERVICE_DESK_DOMAIN}${endpoint}`,
+    {
+      method,
+      headers: {
+        Authorization:
+          "Basic " +
+          Buffer.from(
+            `${process.env.SERVICE_DESK_USERNAME}:${password}`
+          ).toString("base64"),
+        "Content-Type": "application/json",
+      },
+      body: payload ? JSON.stringify(payload) : undefined,
+    }
+  );
+
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`Jira API ${res.status}: ${text.slice(0, 300)}`);
+  }
+
+  return JSON.parse(text);
+};
+
 const getServiceDeskUserAccount = async (form_submission_data, secret) => {
   console.log("Fetching SD user account...");
 
-  const result = await atlassianRequest(
+  const result = await jiraRequest(
     `/rest/api/3/user/search?query=${form_submission_data.email}`,
     "GET",
     secret
