@@ -91,6 +91,10 @@ const atlassianRequest = async (
     );
   }
 
+  if (res.status === 204) {
+    return null;
+  }
+
   if (!contentType.includes("application/json")) {
     throw new Error(
       `Expected JSON from Atlassian but got ${contentType} from ${endpoint}\n` +
