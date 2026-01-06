@@ -159,7 +159,7 @@ const createServiceDeskRequest = async (
   const requestEmail = preparedSubmissionData.email;
   delete preparedSubmissionData.email;
   delete preparedSubmissionData.form_id;
-  delete preparedSubmissionData["frc-captcha-solution"];
+  delete preparedSubmissionData["frc-captcha-response"];
   const payload = {
     serviceDeskId: formData.projectId,
     requestTypeId: formData.requestTypeId,
@@ -215,15 +215,17 @@ const verifyCaptcha = async (solution) => {
     return false;
   }
 
-  const res = await fetch("https://api.friendlycaptcha.com/api/v1/siteverify", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      solution,
-      secret: secretKey,
-      sitekey: siteKey,
-    }),
-  });
+  const res = await fetch(
+    "https://global.frcapi.com/api/v2/captcha/siteverify",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-API-KEY": secretKey },
+      body: JSON.stringify({
+        response: solution,
+        sitekey: siteKey,
+      }),
+    }
+  );
 
   if (!res.ok) {
     console.error("Captcha verification HTTP error:", res.status);
@@ -259,7 +261,7 @@ module.exports.submit = async (event) => {
     console.log(form_submission_data);
 
     // 1. CAPTCHA
-    const captchaSolution = form_submission_data["frc-captcha-solution"];
+    const captchaSolution = form_submission_data["frc-captcha-response"];
     console.log(captchaSolution);
     if (!captchaSolution) {
       return response(400, { message: "Captcha solution is missing" });
