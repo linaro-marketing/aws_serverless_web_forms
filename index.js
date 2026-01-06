@@ -159,7 +159,7 @@ const createServiceDeskRequest = async (
   const requestEmail = preparedSubmissionData.email;
   delete preparedSubmissionData.email;
   delete preparedSubmissionData.form_id;
-  // delete preparedSubmissionData["frc-captcha-solution"];
+  delete preparedSubmissionData["frc-captcha-solution"];
   const payload = {
     serviceDeskId: formData.projectId,
     requestTypeId: formData.requestTypeId,
@@ -206,31 +206,33 @@ const submitTicket = async (form_submission_data) => {
   }
 };
 
-// const verifyCaptcha = async (solution) => {
-//   const secretKey = process.env.PUBLIC_FRIENDLY_CAPTCHA_API_KEY;
-//   const siteKey = process.env.PUBLIC_FRIENDLY_CAPTCHA_SITEKEY;
+const verifyCaptcha = async (solution) => {
+  const secretKey = process.env.FRIENDLY_CAPTCHA_SECRET_KEY;
+  const siteKey = process.env.FRIENDLY_CAPTCHA_SITEKEY;
 
-//   console.log("Verifying FriendlyCaptcha solution...");
+  if (!secretKey || !siteKey) {
+    console.error("Captcha env vars missing");
+    return false;
+  }
 
-//   const response = await fetch(
-//     "https://api.friendlycaptcha.com/api/v1/siteverify",
-//     {
-//       method: "POST",
-//       headers: { "Content-Type": "application/json" },
-//       body: JSON.stringify({
-//         solution: solution,
-//         secret: secretKey,
-//         sitekey: siteKey,
-//       }),
-//     }
-//   );
+  const res = await fetch("https://api.friendlycaptcha.com/api/v1/siteverify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      solution,
+      secret: secretKey,
+      sitekey: siteKey,
+    }),
+  });
 
-//   const data = await response.json();
-//   if (!data.success) {
-//     console.error("Captcha verification failed:", data.errors);
-//   }
-//   return data.success;
-// };
+  if (!res.ok) {
+    console.error("Captcha verification HTTP error:", res.status);
+    return false;
+  }
+
+  const data = await res.json();
+  return Boolean(data?.success);
+};
 
 const response = (statusCode, body) => ({
   statusCode,
@@ -249,17 +251,18 @@ module.exports.submit = async (event) => {
 
     const form_submission_data = JSON.parse(event.body);
 
-    // 1. (Optional) CAPTCHA — re-enable later
-    // ----------------------------------------
-    // const captchaSolution = form_submission_data["frc-captcha-solution"];
-    // if (!captchaSolution) {
-    //   return response(400, { message: "Captcha solution is missing" });
-    // }
-    //
-    // const isHuman = await verifyCaptcha(captchaSolution);
-    // if (!isHuman) {
-    //   return response(403, { message: "Captcha verification failed" });
-    // }
+    // 1. CAPTCHA
+    const captchaSolution = form_submission_data["frc-captcha-solution"];
+    console.log(captchaSolution);
+    if (!captchaSolution) {
+      return response(400, { message: "Captcha solution is missing" });
+    }
+    console.log("Checking CAPTCHA...");
+    const isHuman = await verifyCaptcha(captchaSolution);
+    console.log(isHuman);
+    if (!isHuman) {
+      return response(403, { message: "Captcha verification failed" });
+    }
 
     // 2. FORM LOOKUP
     const formData = fetchFormData(form_submission_data.form_id);
