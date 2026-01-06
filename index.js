@@ -251,6 +251,8 @@ module.exports.submit = async (event) => {
 
     const form_submission_data = JSON.parse(event.body);
 
+    console.log(form_submission_data);
+
     // 1. CAPTCHA
     const captchaSolution = form_submission_data["frc-captcha-solution"];
     console.log(captchaSolution);
