@@ -207,7 +207,7 @@ const submitTicket = async (form_submission_data) => {
 };
 
 const verifyCaptcha = async (solution) => {
-  const secretKey = process.env.FRIENDLY_CAPTCHA_SECRET_KEY;
+  const secretKey = process.env.FRIENDLY_CAPTCHA_API_KEY;
   const siteKey = process.env.FRIENDLY_CAPTCHA_SITEKEY;
 
   if (!secretKey || !siteKey) {
@@ -231,6 +231,11 @@ const verifyCaptcha = async (solution) => {
   }
 
   const data = await res.json();
+
+  if (!data?.success) {
+    console.error("Captcha verification failed:", data);
+  }
+
   return Boolean(data?.success);
 };
 
