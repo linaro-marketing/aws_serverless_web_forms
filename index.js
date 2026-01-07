@@ -2,64 +2,15 @@
 
 const fs = require("fs");
 const AWS = require("aws-sdk");
-const fetch = (...args) =>
-  import("node-fetch").then(({ default: fetch }) => fetch(...args));
-const nv = require("node-vault");
-var aws4 = require("aws4");
 AWS.config.setPromisesDependency(require("bluebird"));
 const ses = new AWS.SES({
   region: "us-east-1",
 });
 
-const vault = nv({
-  apiVersion: "v1",
-  endpoint: `https://${process.env.VAULT_DOMAIN}:${process.env.VAULT_PORT}`,
-});
-vault.generateFunction("awsIamLogin", {
-  method: "POST",
-  path: "/auth/aws/login",
-});
+const FORM_DATA = JSON.parse(fs.readFileSync("form_data.json", "utf8"));
 
-const vaultLogin = async () => {
-  const postBody = await getSignedAWSLoginConfig(
-    process.env.VAULT_IAM_ROLE,
-    process.env.VAULT_DOMAIN
-  );
-  return await vault.awsIamLogin(postBody);
-};
-
-const getSignedAWSLoginConfig = (role, id) => {
-  var body = "Action=GetCallerIdentity&Version=2011-06-15";
-  var url = "https://sts.amazonaws.com/";
-  var signedRequest;
-  if (id) {
-    signedRequest = aws4.sign({
-      service: "sts",
-      headers: { "X-Vault-AWS-IAM-Server-ID": id },
-      body: body,
-    });
-  } else {
-    signedRequest = aws4.sign({ service: "sts", body: body });
-  }
-
-  var headers = signedRequest.headers;
-  for (let header in headers) {
-    headers[header] = [headers[header].toString()];
-  }
-
-  return {
-    role: role,
-    iam_http_request_method: "POST",
-    iam_request_url: Buffer.from(url, "utf8").toString("base64"),
-    iam_request_body: Buffer.from(body, "utf8").toString("base64"),
-    iam_request_headers: Buffer.from(JSON.stringify(headers), "utf8").toString(
-      "base64"
-    ),
-  };
-};
-
-const sendVerificationEmail = (inputs, templateName, sendTo, formId, event) => {
-  let templateData = {
+const sendConfirmationEmail = async (inputs, templateName, sendTo) => {
+  const templateData = {
     name: inputs["customfield_13155"],
     description: inputs["description"] ?? inputs["customfield_13365"],
   };
@@ -84,115 +35,126 @@ const sendVerificationEmail = (inputs, templateName, sendTo, formId, event) => {
   });
 };
 
-const validateForm = (formData) => {
-  let form_id = formData["form_id"];
-  let validFormData = fetchFormData(form_id);
-  if (!validFormData) {
-    console.log("Couldn't fetch form_data for the form_id provided.");
-    return false;
-  } else {
-    const validRequiredRequestFields =
-      validFormData.fields.requestTypeFields.filter((entry) => {
-        return entry.required === true;
-      });
-    for (let i = 0; i < validRequiredRequestFields.length; i++) {
-      if (!formData.hasOwnProperty(validRequiredRequestFields[i].fieldId)) {
-        console.log("Missing a required field.");
-        return false;
-      }
-    }
-    if (!formData.hasOwnProperty("email")) {
-      console.log("Missing the email field.");
+const validateForm = (formData, submission) => {
+  if (!formData) return false;
+
+  const requiredFields = formData.fields.requestTypeFields.filter(
+    (f) => f.required
+  );
+
+  for (const field of requiredFields) {
+    const value = submission[field.fieldId];
+    if (value === undefined || value === null || value === "") {
       return false;
     }
   }
-  return true;
+
+  return "email" in submission;
 };
 
-const serviceDeskRequest = (
+const atlassianRequest = async (
   endpoint,
   method,
   password,
-  payload = false,
+  payload = null,
   experimental = false
 ) => {
-  const requestHeaders = {
-    method: method,
+  const requestOptions = {
+    method,
     headers: {
-      Authorization:
-        "Basic " +
-        Buffer.from(
-          `${process.env.SERVICE_DESK_USERNAME}:${password}`
-        ).toString("base64"),
+      Authorization: `Basic ${Buffer.from(
+        `${process.env.SERVICE_DESK_USERNAME}:${password}`
+      ).toString("base64")}`,
       "Content-Type": "application/json",
+      Accept: "application/json",
+      "User-Agent": "Linaro-WebForms-Lambda/2.0",
     },
   };
-  if (payload) {
-    requestHeaders.body = JSON.stringify(payload);
-  }
+
   if (experimental) {
-    requestHeaders["headers"]["X-ExperimentalApi"] = true;
+    requestOptions.headers["X-ExperimentalApi"] = true;
   }
-  return fetch(
+
+  if (payload) {
+    requestOptions.body = JSON.stringify(payload);
+  }
+
+  const res = await fetch(
     `https://${process.env.SERVICE_DESK_DOMAIN}${endpoint}`,
-    requestHeaders
+    requestOptions
   );
+
+  console.log(res);
+
+  const contentType = res.headers.get("content-type") || "";
+  const rawBody = await res.text();
+
+  console.log(rawBody);
+
+  if (!res.ok) {
+    throw new Error(
+      `Atlassian API error ${res.status} ${method} ${endpoint}\n` +
+        rawBody.slice(0, 500)
+    );
+  }
+
+  if (res.status === 204) {
+    return null;
+  }
+
+  if (!contentType.includes("application/json")) {
+    throw new Error(
+      `Expected JSON from Atlassian but got ${contentType} from ${endpoint}\n` +
+        rawBody.slice(0, 500)
+    );
+  }
+
+  try {
+    return JSON.parse(rawBody);
+  } catch (e) {
+    throw new Error(
+      `Failed to parse JSON from Atlassian\n` + e + rawBody.slice(0, 500)
+    );
+  }
 };
 
 const getServiceDeskUserAccount = async (form_submission_data, secret) => {
-  console.log("Fetching SD user account...: ");
-  const sdResponse = await serviceDeskRequest(
+  console.log("Fetching SD user account...");
+
+  const result = await atlassianRequest(
     `/rest/api/3/user/search?query=${form_submission_data.email}`,
     "GET",
     secret
   );
 
-  if (!sdResponse.ok) {
-    if (sdResponse.status !== 404) {
-      throw new Error(
-        `HTTP status ${sdResponse.status}: FailedToAddUserToServiceDeskProject}`
-      );
-    }
-  }
+  console.log(result);
 
-  const jsonRes = await sdResponse.json();
-  if (jsonRes.length === 0) {
-    console.log("User account not found, creating customer account...");
-    const full_name = form_submission_data.email;
-    const createCustomerRes = await serviceDeskRequest(
+  if (!result || result.length === 0) {
+    console.log("User not found, creating customer...");
+
+    return await atlassianRequest(
       `/rest/servicedeskapi/customer`,
       "POST",
       secret,
-      { email: form_submission_data.email, displayName: full_name },
+      {
+        email: form_submission_data.email,
+        displayName: form_submission_data.email,
+      },
       true
     );
-
-    if (!createCustomerRes.ok) {
-      throw new Error(
-        `HTTP status ${createCustomerRes.status}: FailedToCreateUserAsNewCustomer`
-      );
-    }
-
-    return await createCustomerRes.json();
-  } else {
-    return jsonRes[0];
   }
+
+  return result[0];
 };
 
 const addUserToServiceDeskProject = async (formData, user, secret) => {
-  const res = await serviceDeskRequest(
+  await atlassianRequest(
     `/rest/servicedeskapi/servicedesk/${formData.projectId}/customer`,
     "POST",
     secret,
     { accountIds: [user.accountId] },
     true
   );
-
-  if (!res.ok) {
-    throw new Error(
-      `HTTP status ${res.status}: FailedToAddUserToServiceDeskProject`
-    );
-  }
 };
 
 const createServiceDeskRequest = async (
@@ -200,53 +162,40 @@ const createServiceDeskRequest = async (
   formData,
   secret
 ) => {
-  let preparedSubmissionData = { ...form_submission_data };
-  if (preparedSubmissionData.formName) {
-    delete preparedSubmissionData.formName;
-  }
-  let requestEmail = preparedSubmissionData["email"];
-  delete preparedSubmissionData["email"];
-  delete preparedSubmissionData["form_id"];
+  const preparedSubmissionData = { ...form_submission_data };
+
+  const requestEmail = preparedSubmissionData.email;
+  delete preparedSubmissionData.email;
+  delete preparedSubmissionData.form_id;
+  delete preparedSubmissionData["frc-captcha-response"];
   const payload = {
     serviceDeskId: formData.projectId,
     requestTypeId: formData.requestTypeId,
     requestFieldValues: preparedSubmissionData,
     raiseOnBehalfOf: requestEmail,
   };
-  console.log("CreateServiceDeskRequestPayload: ", payload);
 
-  const res = await serviceDeskRequest(
+  console.log("CreateServiceDeskRequestPayload:", payload);
+
+  return await atlassianRequest(
     `/rest/servicedeskapi/request`,
     "POST",
     secret,
     payload
   );
-  console.log("result", res);
-
-  if (!res.ok) {
-    throw new Error(
-      `HTTP status ${res.status}: FailedToCreateServiceDeskRequest`
-    );
-  }
-
-  return await res.json();
 };
+
 const fetchFormData = (form_id) => {
-  let rawFormData = fs.readFileSync("form_data.json");
-  let tempformData = JSON.parse(rawFormData);
-  var foundForm = false;
-  var formData = {};
-  tempformData.forEach((form, index) => {
-    if (form.form_id.toString() === form_id) {
-      formData = form;
-      foundForm = true;
-    }
-  });
-  return foundForm ? formData : false;
+  const id = form_id.toString();
+  return FORM_DATA.find((form) => form.form_id.toString() === id) || null;
 };
-const submitTicket = async (form_submission_data, event) => {
+
+const submitTicket = async (form_submission_data) => {
   console.log("Submitting Ticket...", form_submission_data);
-  const formData = fetchFormData(form_submission_data.form_id.toString());
+  const formData = fetchFormData(form_submission_data.form_id);
+  if (!formData) {
+    throw new Error(`Unknown form_id ${form_submission_data.form_id}`);
+  }
   console.log("Form Data: ", formData);
   const authResult = await vaultLogin();
   try {
@@ -264,47 +213,110 @@ const submitTicket = async (form_submission_data, event) => {
   }
 };
 
-module.exports.submit = async (event, context, callback) => {
-  try {
-    const form_submission_data = JSON.parse(event.body);
-    var formValid = validateForm(form_submission_data);
+const verifyCaptcha = async (solution) => {
+  const secretKey = process.env.FRIENDLY_CAPTCHA_API_KEY;
+  const siteKey = process.env.FRIENDLY_CAPTCHA_SITEKEY;
 
-    if (!formValid) {
-      console.error("Validation Failed");
-      throw new Error("FormValidationFailed");
-    } else {
-      await submitTicket(form_submission_data, event);
-      await sendVerificationEmail(
+  if (!secretKey || !siteKey) {
+    console.error("Captcha env vars missing");
+    return false;
+  }
+
+  const res = await fetch(
+    "https://global.frcapi.com/api/v2/captcha/siteverify",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-API-KEY": secretKey },
+      body: JSON.stringify({
+        response: solution,
+        sitekey: siteKey,
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    console.error("Captcha verification HTTP error:", res.status);
+    return false;
+  }
+
+  const data = await res.json();
+
+  if (!data?.success) {
+    console.error("Captcha verification failed:", data);
+  }
+
+  return Boolean(data?.success);
+};
+
+const response = (statusCode, body) => ({
+  statusCode,
+  headers: {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Credentials": true,
+  },
+  body: JSON.stringify(body),
+});
+
+module.exports.submit = async (event) => {
+  try {
+    if (!event.body) {
+      return response(400, { message: "Missing request body" });
+    }
+
+    const form_submission_data = JSON.parse(event.body);
+
+    console.log(form_submission_data);
+
+    // 1. CAPTCHA
+    const captchaSolution = form_submission_data["frc-captcha-response"];
+    console.log(captchaSolution);
+    if (!captchaSolution) {
+      return response(400, { message: "Captcha solution is missing" });
+    }
+    console.log("Checking CAPTCHA...");
+    const isHuman = await verifyCaptcha(captchaSolution);
+    console.log(isHuman);
+    if (!isHuman) {
+      return response(403, { message: "Captcha verification failed" });
+    }
+
+    // 2. FORM LOOKUP
+    const formData = fetchFormData(form_submission_data.form_id);
+    if (!formData) {
+      return response(400, { message: "Unknown form_id" });
+    }
+
+    // 3. FORM VALIDATION
+    if (!validateForm(formData, form_submission_data)) {
+      return response(400, { message: "Invalid form submission" });
+    }
+
+    // 4. BUSINESS LOGIC
+    await submitTicket(form_submission_data);
+
+    // 5. EMAIL
+    try {
+      await sendConfirmationEmail(
         form_submission_data,
         "confirmation_dev",
         form_submission_data.email,
         form_submission_data.form_id,
         event
       );
-      callback(null, {
-        statusCode: 200,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Credentials": true,
-        },
-        body: JSON.stringify({
-          message: `Sucessfully submitted form with email ${form_submission_data.email}`,
-          formId: form_submission_data.form_id,
-        }),
-      });
+    } catch (e) {
+      console.warn("Confirmation email failed after ticket creation", e);
     }
+
+    // 6. SUCCESS
+    return response(200, {
+      message: `Successfully submitted form with email ${form_submission_data.email}`,
+      formId: form_submission_data.form_id,
+    });
   } catch (error) {
     console.error("Error during submission:", error);
-    return {
-      statusCode: 500,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Credentials": true,
-      },
-      body: JSON.stringify({
-        message: "An error occurred while processing the submission.",
-        error: error.message,
-      }),
-    };
+
+    return response(500, {
+      message: "An error occurred while processing the submission",
+    });
   }
 };
