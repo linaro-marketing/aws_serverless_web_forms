@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const AWS = require("aws-sdk");
+
 AWS.config.setPromisesDependency(require("bluebird"));
 const ses = new AWS.SES({
   region: "us-east-1",
@@ -17,22 +18,13 @@ const sendConfirmationEmail = async (inputs, templateName, sendTo) => {
 
   const params = {
     Template: templateName,
-    Destination: {
-      ToAddresses: [sendTo],
-    },
+    Destination: { ToAddresses: [sendTo] },
     Source: process.env.VERIFICATION_FROM_EMAIL_ADDR,
-    TemplateData: JSON.stringify(templateData || {}),
+    TemplateData: JSON.stringify(templateData),
   };
 
-  ses.sendTemplatedEmail(params, (err, data) => {
-    if (err) {
-      console.log("Error whilst sending email:", err);
-      return false;
-    } else {
-      console.log("Confirmation Email Sent");
-      return true;
-    }
-  });
+  await ses.sendTemplatedEmail(params).promise();
+  console.log("Confirmation Email Sent");
 };
 
 const validateForm = (formData, submission) => {
@@ -197,19 +189,20 @@ const submitTicket = async (form_submission_data) => {
     throw new Error(`Unknown form_id ${form_submission_data.form_id}`);
   }
   console.log("Form Data: ", formData);
-  const authResult = await vaultLogin();
   try {
-    vault.token = authResult.auth.client_token;
-    const result = await vault.read(process.env.VAULT_SECRET_PATH);
+    const secret = process.env.SERVICE_DESK_API_KEY;
+    if (!secret) {
+      throw new Error("Missing SERVICE_DESK_API_KEY");
+    }
     console.log("Auth successful...");
-    const secret = result.data.pw;
     const user = await getServiceDeskUserAccount(form_submission_data, secret);
     await addUserToServiceDeskProject(formData, user, secret);
     console.log("User added to Service Desk Project");
     await createServiceDeskRequest(form_submission_data, formData, secret);
     console.log("Service desk ticket created...");
-  } finally {
-    await vault.tokenRevokeSelf();
+  } catch (e) {
+    console.error("Error submitting ticket: ", e);
+    throw e;
   }
 };
 
@@ -299,9 +292,7 @@ module.exports.submit = async (event) => {
       await sendConfirmationEmail(
         form_submission_data,
         "confirmation_dev",
-        form_submission_data.email,
-        form_submission_data.form_id,
-        event
+        form_submission_data.email
       );
     } catch (e) {
       console.warn("Confirmation email failed after ticket creation", e);
