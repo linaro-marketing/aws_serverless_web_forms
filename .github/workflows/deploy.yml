@@ -1,4 +1,4 @@
-name: Deploy-Serverless-Web-Forms
+name: Deploy-Web-Forms
 
 on:
   push:
@@ -58,7 +58,7 @@ jobs:
           FRIENDLY_CAPTCHA_SITEKEY=${{ secrets.FRIENDLY_CAPTCHA_SITEKEY }}
           EOF
 
-      - name: Deploy Serverless
+      - name: Deploy SST
         run: |
           STAGE=${{ github.ref == 'refs/heads/main' && 'prod' || 'staging' }}
-          npx serverless deploy --stage $STAGE
+          npx sst deploy --stage $STAGE
