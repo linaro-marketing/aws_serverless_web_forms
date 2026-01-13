@@ -73,9 +73,20 @@ jobs:
           FRIENDLY_CAPTCHA_API_KEY=${{ secrets.FRIENDLY_CAPTCHA_API_KEY }}
           FRIENDLY_CAPTCHA_SITEKEY=${{ secrets.FRIENDLY_CAPTCHA_SITEKEY }}
           EOF
+      
+      - name: Install Pulumi NodeJS language plugin
+        run: |
+          export PATH=$HOME/.pulumi/bin:$PATH
+          pulumi plugin install language nodejs 3.87.0
+      
+      - name: Debug Pulumi versions
+        run: |
+          export PATH=$HOME/.pulumi/bin:$PATH
+          pulumi version
+          pulumi plugin ls
 
       - name: Deploy SST
         run: |
-          STAGE=${{ github.ref == 'refs/heads/main' && 'prod' || 'staging' }}
           export PATH=$HOME/.pulumi/bin:$PATH
+          STAGE=${{ github.ref == 'refs/heads/main' && 'prod' || 'staging' }}
           npx sst deploy --stage $STAGE
