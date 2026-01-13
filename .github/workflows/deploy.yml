@@ -45,7 +45,7 @@ jobs:
         env:
           SERVICE_DESK_USERNAME: ${{ secrets.SERVICE_DESK_USERNAME }}
           SERVICE_DESK_API_KEY: ${{ secrets.SERVICE_DESK_API_KEY }}
-        run: node setup_form_data.js --path config/formConfig.json --outPath form_data.json
+        run: node setup_form_data.ts --path config/formConfig.json --outPath form_data.json
 
       - name: Create .env file from secrets
         run: |
