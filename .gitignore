@@ -26,3 +26,5 @@ jspm_packages
 node_modules
 
 *.txt
+
+dist/
