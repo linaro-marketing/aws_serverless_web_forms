@@ -38,10 +38,21 @@ jobs:
           role-to-assume: arn:aws:iam::691071635361:role/github-actions-oidc-role
           aws-region: us-east-1
 
+      - name: Install Pulumi CLI
+        run: |
+          curl -fsSL https://get.pulumi.com | sh
+          export PATH=$HOME/.pulumi/bin:$PATH
+          pulumi version
+
       - name: Install dependencies
         run: yarn install
-      
 
+
+      - name: Cache Pulumi
+        uses: actions/cache@v3
+        with:
+          path: ~/.pulumi/bin
+          key: pulumi-cli-${{ runner.os }}-v3
 
       - name: Prepare Form Data
         env:
@@ -66,4 +77,5 @@ jobs:
       - name: Deploy SST
         run: |
           STAGE=${{ github.ref == 'refs/heads/main' && 'prod' || 'staging' }}
+          export PATH=$HOME/.pulumi/bin:$PATH
           npx sst deploy --stage $STAGE
