@@ -49,7 +49,7 @@ jobs:
           SERVICE_DESK_API_KEY: ${{ secrets.SERVICE_DESK_API_KEY }}
         run: |
           npm ci
-          npx tsc
+          npx tsc -p tsconfig.cli.json
           node dist/setup_form_data.js --path config/formConfig.json --outPath form_data.json
 
       - name: Create .env file from secrets

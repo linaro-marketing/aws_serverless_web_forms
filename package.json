@@ -27,6 +27,7 @@
     "@haftahave/serverless-ses-template": "^3.0.2",
     "@types/aws-lambda": "^8.10.159",
     "@types/bluebird": "^3.5.42",
+    "@types/node": "^25.0.7",
     "@types/yargs": "^17.0.35",
     "aws-lambda": "^1.0.7",
     "prompt": "^1.1.0",
