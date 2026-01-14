@@ -15,8 +15,7 @@ export default $config({
   },
 
   async run() {
-    const fs = await import("fs");
-    const path = await import("path");
+    const fs = await import("node:fs");
 
     // 1. Secrets
     const fromEmail = new sst.Secret("VERIFICATION_FROM_EMAIL_ADDR");
