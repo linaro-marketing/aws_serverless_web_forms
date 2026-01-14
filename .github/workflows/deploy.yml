@@ -23,8 +23,7 @@ jobs:
       name: ${{ github.ref == 'refs/heads/main' && 'prod' || 'staging' }}
 
     steps:
-      - name: Fetch git repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -38,30 +37,20 @@ jobs:
           role-to-assume: arn:aws:iam::691071635361:role/github-actions-oidc-role
           aws-region: us-east-1
 
-      - name: Install Pulumi CLI
-        run: |
-          curl -fsSL https://get.pulumi.com | sh
-          export PATH=$HOME/.pulumi/bin:$PATH
-          pulumi version
-
-      - name: Install dependencies
-        run: yarn install
-
-
-      - name: Cache Pulumi
-        uses: actions/cache@v3
+      - name: Install Pulumi
+        uses: pulumi/actions@v5
         with:
-          path: ~/.pulumi/bin
-          key: pulumi-cli-${{ runner.os }}-v3
+          pulumi-version: 3.117.0
+      - name: Install dependencies
+        run: npm ci
 
+      - name: Build CLI scripts
+        run: npx tsc -p tsconfig.cli.json
       - name: Prepare Form Data
         env:
           SERVICE_DESK_USERNAME: ${{ secrets.SERVICE_DESK_USERNAME }}
           SERVICE_DESK_API_KEY: ${{ secrets.SERVICE_DESK_API_KEY }}
-        run: |
-          npm ci
-          npx tsc -p tsconfig.cli.json
-          node dist/setup_form_data.js --path config/formConfig.json --outPath form_data.json
+        run: node dist/setup_form_data.js --path config/formConfig.json --outPath form_data.json
 
       - name: Create .env file from secrets
         run: |
@@ -73,20 +62,8 @@ jobs:
           FRIENDLY_CAPTCHA_API_KEY=${{ secrets.FRIENDLY_CAPTCHA_API_KEY }}
           FRIENDLY_CAPTCHA_SITEKEY=${{ secrets.FRIENDLY_CAPTCHA_SITEKEY }}
           EOF
-      
-      - name: Install Pulumi NodeJS language plugin
-        run: |
-          export PATH=$HOME/.pulumi/bin:$PATH
-          pulumi plugin install language nodejs 3.87.0
-      
-      - name: Debug Pulumi versions
-        run: |
-          export PATH=$HOME/.pulumi/bin:$PATH
-          pulumi version
-          pulumi plugin ls
 
       - name: Deploy SST
         run: |
-          export PATH=$HOME/.pulumi/bin:$PATH
           STAGE=${{ github.ref == 'refs/heads/main' && 'prod' || 'staging' }}
           npx sst deploy --stage $STAGE
