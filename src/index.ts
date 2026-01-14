@@ -1,8 +1,8 @@
 import { Resource } from "sst";
 import AWS from "aws-sdk";
 import bluebird from "bluebird";
-import fs from "fs";
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
+import formDataJson from "./form_data.json";
 
 AWS.config.setPromisesDependency(bluebird);
 
@@ -50,9 +50,7 @@ interface ServiceDeskUser {
  * Static form data
  */
 
-const FORM_DATA: FormData[] = JSON.parse(
-  fs.readFileSync("../../../form_data.json", "utf8")
-);
+const formData: FormData[] = formDataJson;
 
 /**
  * Email
@@ -237,7 +235,7 @@ const createServiceDeskRequest = async (
 
 const fetchFormData = (formId: string | number): FormData | null => {
   const id = formId.toString();
-  return FORM_DATA.find((f) => f.form_id.toString() === id) ?? null;
+  return formData.find((f: any) => f.form_id.toString() === id) ?? null;
 };
 
 /**
