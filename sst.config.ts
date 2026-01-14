@@ -28,7 +28,7 @@ export default $config({
 
     // 2. Email Set Up
     const confirmationTemplate = new aws.ses.Template("ConfirmationTemplate", {
-      name: "confirmation",
+      name: `confirmation-${$app.stage}`,
       subject: "Linaro - Confirm your website form submission",
       html: fs.readFileSync("templates/confirmation.html", "utf8"),
       text: fs.readFileSync("templates/confirmation.txt", "utf8"),
