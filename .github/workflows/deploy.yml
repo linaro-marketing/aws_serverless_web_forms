@@ -1,4 +1,4 @@
-name: Deploy-Serverless-Web-Forms
+name: Deploy-Web-Forms
 
 on:
   push:
@@ -23,8 +23,7 @@ jobs:
       name: ${{ github.ref == 'refs/heads/main' && 'prod' || 'staging' }}
 
     steps:
-      - name: Fetch git repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -38,14 +37,21 @@ jobs:
           role-to-assume: arn:aws:iam::691071635361:role/github-actions-oidc-role
           aws-region: us-east-1
 
+      - name: Install Pulumi
+        uses: pulumi/actions@v5
+        with:
+          pulumi-version: 3.117.0
       - name: Install dependencies
-        run: yarn install
+        run: npm ci
+
+      - name: Build CLI scripts
+        run: npx tsc -p tsconfig.cli.json
 
       - name: Prepare Form Data
         env:
           SERVICE_DESK_USERNAME: ${{ secrets.SERVICE_DESK_USERNAME }}
           SERVICE_DESK_API_KEY: ${{ secrets.SERVICE_DESK_API_KEY }}
-        run: node setup_form_data.js --path config/formConfig.json --outPath form_data.json
+        run: node dist/setup_form_data.js --path config/formConfig.json --outPath src/form_data.json
 
       - name: Create .env file from secrets
         run: |
@@ -58,7 +64,7 @@ jobs:
           FRIENDLY_CAPTCHA_SITEKEY=${{ secrets.FRIENDLY_CAPTCHA_SITEKEY }}
           EOF
 
-      - name: Deploy Serverless
+      - name: Deploy SST
         run: |
           STAGE=${{ github.ref == 'refs/heads/main' && 'prod' || 'staging' }}
-          npx serverless deploy --stage $STAGE
+          npx sst deploy --stage $STAGE

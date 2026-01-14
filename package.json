@@ -1,24 +1,36 @@
 {
-  "name": "serverless_web_forms",
-  "version": "1.0.0",
+  "name": "aws_serverless_web_forms",
+  "version": "2.0.0",
   "description": "A Serverless Service for the handling of static website forms. Upon submission of the form, a confirmation email is sent and a Service Desk ticket is created.",
-  "main": "index.js",
-  "author": "Kyle Kirkby",
+  "main": "index.ts",
+  "type": "module",
   "license": "MIT",
+  "scripts": {
+    "dev": "sst dev",
+    "deploy": "sst deploy",
+    "remove": "sst remove",
+    "console": "sst console",
+    "secrets:set": "sst secret set",
+    "secrets:list": "sst secret list"
+  },
   "dependencies": {
+    "aws-cdk-lib": "^2.234.1",
     "aws-sdk": "^2.1487.0",
     "bluebird": "^3.7.2",
     "body-parser": "^1.19.0",
-    "serverless": "^3.38.0",
+    "constructs": "^10.4.4",
+    "sst": "^3.17.25",
+    "typescript": "^5.9.3",
     "uuid": "^8.3.2"
   },
   "devDependencies": {
     "@haftahave/serverless-ses-template": "^3.0.2",
-    "dotenv": "^8.2.0",
+    "@types/aws-lambda": "^8.10.159",
+    "@types/bluebird": "^3.5.42",
+    "@types/node": "^25.0.7",
+    "@types/yargs": "^17.0.35",
+    "aws-lambda": "^1.0.7",
     "prompt": "^1.1.0",
-    "serverless-http": "^2.6.0",
-    "serverless-offline": "^6.8.0",
-    "serverless-plugin-scripts": "^1.0.2",
     "yargs": "^16.2.0"
   }
 }

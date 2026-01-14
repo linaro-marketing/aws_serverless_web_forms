@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-// This script reads the requests.json config file
-// and makes a few requests to the Atlassian Service Desk API
-// to retrieve the projectId and requestTypeId
-// It will also validate the request fields against the API
-const fs = require("fs");
-const fetch = global.fetch;
-const argv = require("yargs/yargs")(process.argv.slice(2)).argv;
 
-const serviceDeskDomain = "linaro-servicedesk.atlassian.net"; // "servicedesk.linaro.org";
+import fs from "node:fs";
+import yargs from "yargs";
+import { hideBin } from "yargs/helpers";
+
+/**
+ * Config / env
+ */
+const serviceDeskDomain = "linaro-servicedesk.atlassian.net";
 
 const email = process.env.SERVICE_DESK_USERNAME;
 const apiKey = process.env.SERVICE_DESK_API_KEY;
@@ -19,7 +19,23 @@ if (!email || !apiKey) {
   process.exit(1);
 }
 
-const requestHeaders = {
+/**
+ * CLI args
+ */
+interface CliArgs {
+  path: string;
+  outPath: string;
+}
+
+const argv = yargs(hideBin(process.argv)).options({
+  path: { type: "string", demandOption: true },
+  outPath: { type: "string", demandOption: true },
+}).argv as unknown as CliArgs;
+
+/**
+ * HTTP helpers
+ */
+const requestHeaders: RequestInit = {
   method: "GET",
   headers: {
     Authorization:
@@ -29,34 +45,93 @@ const requestHeaders = {
   },
 };
 
-const api = async (path) => {
+async function api<T>(path: string): Promise<T> {
   const url = `https://${serviceDeskDomain}${path}`;
   const res = await fetch(url, requestHeaders);
+
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`HTTP ${res.status} for ${url}: ${text}`);
   }
-  return res.json();
-};
 
-async function getFormData(formEntry, index) {
+  return res.json() as Promise<T>;
+}
+
+/**
+ * Atlassian API shapes (minimal but useful)
+ */
+interface ServiceDesk {
+  id: string;
+  projectName: string;
+}
+
+interface RequestType {
+  id: string;
+  name: string;
+}
+
+interface JiraSchema {
+  type: "string" | "array" | string;
+}
+
+interface RequestTypeField {
+  fieldId: string;
+  name: string;
+  jiraSchema: JiraSchema;
+  validValues?: Array<{
+    value: string;
+    label: string;
+  }>;
+}
+
+interface RequestTypeFieldsResponse {
+  requestTypeFields: RequestTypeField[];
+}
+
+interface ConfigFormEntry {
+  projectName: string;
+  requestType: string;
+}
+
+interface FormResult {
+  form_id: number;
+  projectName: string;
+  requestTypeName: string;
+  projectId: string;
+  requestTypeId: string;
+  fields: RequestTypeFieldsResponse;
+}
+
+/**
+ * Core logic
+ */
+async function getFormData(
+  formEntry: ConfigFormEntry,
+  index: number
+): Promise<FormResult> {
   const { projectName, requestType } = formEntry;
 
-  const projects = await api(`/rest/servicedeskapi/servicedesk`);
+  const projects = await api<{ values: ServiceDesk[] }>(
+    "/rest/servicedeskapi/servicedesk"
+  );
+
   const match = projects.values.find((p) => p.projectName === projectName);
 
-  if (!match) throw new Error(`Project not found: ${projectName}`);
+  if (!match) {
+    throw new Error(`Project not found: ${projectName}`);
+  }
 
-  const requestTypes = await api(
+  const requestTypes = await api<{ values: RequestType[] }>(
     `/rest/servicedeskapi/servicedesk/${match.id}/requesttype`
   );
 
-  console.log("Request Types: ", requestTypes);
   const typeMatch = requestTypes.values.find((t) => t.name === requestType);
 
-  if (!typeMatch) throw new Error(`Request type not found: ${requestType}`);
+  if (!typeMatch) {
+    throw new Error(`Request type not found: ${requestType}`);
+  }
 
-  const fields = await api(
+  const fields = await api<RequestTypeFieldsResponse>(
     `/rest/servicedeskapi/servicedesk/${match.id}/requesttype/${typeMatch.id}/field`
   );
 
@@ -70,7 +145,10 @@ async function getFormData(formEntry, index) {
   };
 }
 
-function createExampleFormHTML(form) {
+/**
+ * HTML generation
+ */
+function createExampleFormHTML(form: FormResult): void {
   let html = `<form method="POST" action="">\n`;
 
   form.fields.requestTypeFields.forEach((field) => {
@@ -80,7 +158,7 @@ function createExampleFormHTML(form) {
       html += `<input type="text" name="${fieldId}" placeholder="${name}"/>\n`;
     }
 
-    if (jiraSchema.type === "array") {
+    if (jiraSchema.type === "array" && validValues) {
       validValues.forEach((val, i) => {
         html += `<input type="checkbox" name="${fieldId}" id="${fieldId}-${i}" value="${val.value}"/>\n`;
         html += `<label for="${fieldId}-${i}">${val.label}</label>\n`;
@@ -97,19 +175,18 @@ function createExampleFormHTML(form) {
   );
 }
 
-async function main() {
-  if (!argv.path || !argv.outPath) {
-    console.error(
-      "Usage: node setup_form_data.js --path <config.json> --outPath <output.json>"
-    );
-    process.exit(1);
-  }
-
+/**
+ * Entrypoint
+ */
+async function main(): Promise<void> {
   console.log(`📄 Reading config from: ${argv.path}`);
 
-  const config = JSON.parse(fs.readFileSync(argv.path, "utf8"));
+  const config = JSON.parse(
+    fs.readFileSync(argv.path, "utf8")
+  ) as ConfigFormEntry[];
 
-  const results = [];
+  const results: FormResult[] = [];
+
   for (const [index, form] of config.entries()) {
     console.log(`📌 Fetching: ${form.projectName} / ${form.requestType}`);
     results.push(await getFormData(form, index));
@@ -122,11 +199,18 @@ async function main() {
   if (!fs.existsSync("html_examples")) {
     fs.mkdirSync("html_examples", { recursive: true });
   }
+
   results.forEach(createExampleFormHTML);
   console.log(`✨ Done`);
 }
 
-main().catch((err) => {
-  console.error("❌ Fatal error:", err.message);
+try {
+  await main();
+} catch (err: unknown) {
+  if (err instanceof Error) {
+    console.error("❌ Fatal error:", err.message);
+  } else {
+    console.error("❌ Fatal error:", err);
+  }
   process.exit(1);
-});
+}
