@@ -95,6 +95,35 @@ You’ll see output like:
 ApiEndpoint: https://xxxx.execute-api.us-east-1.amazonaws.com
 ```
 
+## Adding Service Desk Forms
+
+### How It Works
+
+Forms are configured in `config/formConfig.json`. During deployment (or locally), the build script fetches project IDs, request type IDs, and field definitions from the Jira Service Desk API and generates `src/form_data.json`.
+
+### Adding a New Form
+
+1. Edit `config/formConfig.json`:
+
+```json
+[{ "projectName": "YourProject", "requestType": "Your Request Type" }]
+```
+
+2. Push to `staging` or `main` — the CI pipeline handles the rest.
+
+### Running Locally
+
+```bash
+# Set credentials (one-time per terminal session)
+export SERVICE_DESK_USERNAME="your-email@example.com"
+export SERVICE_DESK_API_KEY="your-api-key"
+
+# Generate form data
+npm run generate-forms
+```
+
+> **Note**: `src/form_data.json` is auto-generated. Don't edit it manually — your changes will be overwritten on deploy.
+
 ## Testing the API
 
 Using curl

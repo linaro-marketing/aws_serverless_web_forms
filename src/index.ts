@@ -59,7 +59,7 @@ const formData: FormData[] = formDataJson;
 const sendConfirmationEmail = async (
   inputs: FormSubmissionData,
   templateName: string,
-  sendTo: string
+  sendTo: string,
 ): Promise<void> => {
   const templateData = {
     name: inputs["customfield_13155"],
@@ -82,12 +82,12 @@ const sendConfirmationEmail = async (
 
 const validateForm = (
   formData: FormData,
-  submission: FormSubmissionData
+  submission: FormSubmissionData,
 ): boolean => {
   if (!formData) return false;
 
   const requiredFields = formData.fields.requestTypeFields.filter(
-    (f) => f.required
+    (f) => f.required,
   );
 
   for (const field of requiredFields) {
@@ -109,11 +109,11 @@ const atlassianRequest = async <T = any>(
   method: "GET" | "POST" | "PUT" | "DELETE",
   password: string,
   payload: unknown = null,
-  experimental = false
+  experimental = false,
 ): Promise<T | null> => {
   const headers: Record<string, string> = {
     Authorization: `Basic ${Buffer.from(
-      `${Resource.SERVICE_DESK_USERNAME.value}:${password}`
+      `${Resource.SERVICE_DESK_USERNAME.value}:${password}`,
     ).toString("base64")}`,
     "Content-Type": "application/json",
     Accept: "application/json",
@@ -130,7 +130,7 @@ const atlassianRequest = async <T = any>(
       method,
       headers,
       body: payload ? JSON.stringify(payload) : undefined,
-    }
+    },
   );
 
   const contentType = res.headers.get("content-type") ?? "";
@@ -140,8 +140,8 @@ const atlassianRequest = async <T = any>(
     throw new Error(
       `Atlassian API error ${res.status} ${method} ${endpoint}\n${rawBody.slice(
         0,
-        500
-      )}`
+        500,
+      )}`,
     );
   }
 
@@ -151,7 +151,7 @@ const atlassianRequest = async <T = any>(
 
   if (!contentType.includes("application/json")) {
     throw new Error(
-      `Expected JSON but got ${contentType}\n${rawBody.slice(0, 500)}`
+      `Expected JSON but got ${contentType}\n${rawBody.slice(0, 500)}`,
     );
   }
 
@@ -164,12 +164,12 @@ const atlassianRequest = async <T = any>(
 
 const getServiceDeskUserAccount = async (
   formSubmissionData: FormSubmissionData,
-  secret: string
+  secret: string,
 ): Promise<ServiceDeskUser> => {
   const result = await atlassianRequest<ServiceDeskUser[]>(
     `/rest/api/3/user/search?query=${formSubmissionData.email}`,
     "GET",
-    secret
+    secret,
   );
 
   if (!result || result.length === 0) {
@@ -181,7 +181,7 @@ const getServiceDeskUserAccount = async (
         email: formSubmissionData.email,
         displayName: formSubmissionData.email,
       },
-      true
+      true,
     )) as ServiceDeskUser;
   }
 
@@ -191,21 +191,21 @@ const getServiceDeskUserAccount = async (
 const addUserToServiceDeskProject = async (
   formData: FormData,
   user: ServiceDeskUser,
-  secret: string
+  secret: string,
 ): Promise<void> => {
   await atlassianRequest(
     `/rest/servicedeskapi/servicedesk/${formData.projectId}/customer`,
     "POST",
     secret,
     { accountIds: [user.accountId] },
-    true
+    true,
   );
 };
 
 const createServiceDeskRequest = async (
   formSubmissionData: FormSubmissionData,
   formData: FormData,
-  secret: string
+  secret: string,
 ): Promise<void> => {
   const preparedSubmissionData: PurgedFormData = { ...formSubmissionData };
 
@@ -225,7 +225,7 @@ const createServiceDeskRequest = async (
     `/rest/servicedeskapi/request`,
     "POST",
     secret,
-    payload
+    payload,
   );
 };
 
@@ -243,7 +243,7 @@ const fetchFormData = (formId: string | number): FormData | null => {
  */
 
 const submitTicket = async (
-  formSubmissionData: FormSubmissionData
+  formSubmissionData: FormSubmissionData,
 ): Promise<void> => {
   const formData = fetchFormData(formSubmissionData.form_id);
   if (!formData) {
@@ -282,7 +282,7 @@ const verifyCaptcha = async (solution: string): Promise<boolean> => {
         response: solution,
         sitekey: siteKey,
       }),
-    }
+    },
   );
 
   if (!res.ok) return false;
@@ -297,7 +297,7 @@ const verifyCaptcha = async (solution: string): Promise<boolean> => {
 
 const response = (
   statusCode: number,
-  body: unknown
+  body: unknown,
 ): APIGatewayProxyResult => ({
   statusCode,
   headers: {
@@ -312,7 +312,7 @@ const response = (
  */
 
 export async function submit(
-  event: APIGatewayProxyEvent
+  event: APIGatewayProxyEvent,
 ): Promise<APIGatewayProxyResult> {
   try {
     if (!event.body) {
@@ -346,7 +346,7 @@ export async function submit(
       await sendConfirmationEmail(
         formSubmissionData,
         "confirmation_dev",
-        formSubmissionData.email
+        formSubmissionData.email,
       );
     } catch (e) {
       console.warn("Confirmation email failed", e);
