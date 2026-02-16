@@ -11,7 +11,8 @@
     "remove": "sst remove",
     "console": "sst console",
     "secrets:set": "sst secret set",
-    "secrets:list": "sst secret list"
+    "secrets:list": "sst secret list",
+    "generate-forms": "tsc -p tsconfig.cli.json && node dist/setup_form_data.js --path config/formConfig.json --outPath src/form_data.json"
   },
   "dependencies": {
     "aws-cdk-lib": "^2.234.1",

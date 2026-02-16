@@ -14,7 +14,7 @@ const apiKey = process.env.SERVICE_DESK_API_KEY;
 
 if (!email || !apiKey) {
   console.error(
-    "Missing credentials: SERVICE_DESK_USERNAME or SERVICE_DESK_API_KEY."
+    "Missing credentials: SERVICE_DESK_USERNAME or SERVICE_DESK_API_KEY.",
   );
   process.exit(1);
 }
@@ -94,7 +94,7 @@ interface ConfigFormEntry {
 }
 
 interface FormResult {
-  form_id: number;
+  form_id: string;
   projectName: string;
   requestTypeName: string;
   projectId: string;
@@ -103,16 +103,25 @@ interface FormResult {
 }
 
 /**
+ * Slug generation
+ */
+function generateSlug(projectName: string, requestType: string): string {
+  const combined = `${projectName}-${requestType}`;
+  return combined
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-") // Replace non-alphanumeric with hyphens
+    .replace(/^-+|-+$/g, "") // Trim leading/trailing hyphens
+    .replace(/-+/g, "-"); // Collapse multiple hyphens
+}
+
+/**
  * Core logic
  */
-async function getFormData(
-  formEntry: ConfigFormEntry,
-  index: number
-): Promise<FormResult> {
+async function getFormData(formEntry: ConfigFormEntry): Promise<FormResult> {
   const { projectName, requestType } = formEntry;
 
   const projects = await api<{ values: ServiceDesk[] }>(
-    "/rest/servicedeskapi/servicedesk"
+    "/rest/servicedeskapi/servicedesk",
   );
 
   const match = projects.values.find((p) => p.projectName === projectName);
@@ -122,7 +131,7 @@ async function getFormData(
   }
 
   const requestTypes = await api<{ values: RequestType[] }>(
-    `/rest/servicedeskapi/servicedesk/${match.id}/requesttype`
+    `/rest/servicedeskapi/servicedesk/${match.id}/requesttype`,
   );
 
   const typeMatch = requestTypes.values.find((t) => t.name === requestType);
@@ -132,11 +141,13 @@ async function getFormData(
   }
 
   const fields = await api<RequestTypeFieldsResponse>(
-    `/rest/servicedeskapi/servicedesk/${match.id}/requesttype/${typeMatch.id}/field`
+    `/rest/servicedeskapi/servicedesk/${match.id}/requesttype/${typeMatch.id}/field`,
   );
 
+  const formId = generateSlug(projectName, requestType);
+
   return {
-    form_id: index + 1,
+    form_id: formId,
     projectName,
     requestTypeName: requestType,
     projectId: match.id,
@@ -149,7 +160,9 @@ async function getFormData(
  * HTML generation
  */
 function createExampleFormHTML(form: FormResult): void {
-  let html = `<form method="POST" action="">\n`;
+  let html = `<!-- Form ID: ${form.form_id} -->\n`;
+  html += `<form method="POST" action="">\n`;
+  html += `<input type="hidden" name="form_id" value="${form.form_id}"/>\n`;
 
   form.fields.requestTypeFields.forEach((field) => {
     const { fieldId, name, jiraSchema, validValues } = field;
@@ -171,7 +184,7 @@ function createExampleFormHTML(form: FormResult): void {
   fs.writeFileSync(
     `html_examples/example_form-${form.form_id}.html`,
     html,
-    "utf8"
+    "utf8",
   );
 }
 
@@ -182,20 +195,35 @@ async function main(): Promise<void> {
   console.log(`📄 Reading config from: ${argv.path}`);
 
   const config = JSON.parse(
-    fs.readFileSync(argv.path, "utf8")
+    fs.readFileSync(argv.path, "utf8"),
   ) as ConfigFormEntry[];
 
   const results: FormResult[] = [];
+  const seenSlugs = new Set<string>();
 
-  for (const [index, form] of config.entries()) {
+  for (const form of config) {
     console.log(`📌 Fetching: ${form.projectName} / ${form.requestType}`);
-    results.push(await getFormData(form, index));
+    const result = await getFormData(form);
+
+    // Check for duplicate slugs
+    if (seenSlugs.has(result.form_id)) {
+      throw new Error(`Duplicate form_id generated: ${result.form_id}`);
+    }
+    seenSlugs.add(result.form_id);
+
+    results.push(result);
   }
 
   fs.writeFileSync(argv.outPath, JSON.stringify(results, null, 2), "utf8");
   console.log(`✅ Form data written to: ${argv.outPath}`);
 
-  console.log(`🧱 Generating HTML examples...`);
+  // Print form ID mapping for reference
+  console.log(`\n📋 Form ID mapping:`);
+  results.forEach((r) => {
+    console.log(`   ${r.form_id} → ${r.projectName} / ${r.requestTypeName}`);
+  });
+
+  console.log(`\n🧱 Generating HTML examples...`);
   if (!fs.existsSync("html_examples")) {
     fs.mkdirSync("html_examples", { recursive: true });
   }

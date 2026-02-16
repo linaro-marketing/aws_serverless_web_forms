@@ -1,38 +1,6 @@
 [
   {
-    "projectName": "Linaro Contact",
-    "requestType": "Developer Services Request"
-  },
-  {
-    "projectName": "Linaro Contact",
-    "requestType": "Technology Interest Request"
-  },
-  {
-    "projectName": "Linaro Contact",
-    "requestType": "Engagement Request"
-  },
-  {
-    "projectName": "Linaro Contact",
-    "requestType": "Membership Inquiry"
-  },
-  {
-    "projectName": "Linaro Contact",
-    "requestType": "Bigtop Request"
-  },
-  {
-    "projectName": "Linaro Contact",
-    "requestType": "LTS Request"
-  },
-  {
-    "projectName": "Linaro Contact",
-    "requestType": "Sales Enquiries"
-  },
-  {
-    "projectName": "Linaro Marketing",
-    "requestType": "Media Inquiry"
-  },
-  {
-    "projectName": "Linaro Contact",
-    "requestType": "Webinar contact"
+    "projectName": "CRA",
+    "requestType": "Self-assessment Results"
   }
 ]
