@@ -36,7 +36,7 @@ export default $config({
     // 3. Lambda
     const formFn = new sst.aws.Function("FormHandler", {
       handler: "src/index.submit",
-      runtime: "nodejs20.x",
+      runtime: "nodejs22.x",
       timeout: "30 seconds",
       memory: "128 MB",
       permissions: [
